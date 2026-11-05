@@ -7,6 +7,7 @@ const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
 let C = null, T = { items: [] }, S = null, USER = '', THEME = 'light';
 let AGENTS = [], VITALS = null, BATTERY = null, FOCUS = null, FOCUS_WEEK = { per: {}, total: 0 }, SETTINGS = {};
+let PLATFORM = { os: 'win32', name: 'Windows', canSing: true, canLogin: true, pinned: true };
 let openId = null;
 let tab = 'odoo';
 try { tab = localStorage.getItem('cy.tab') || 'odoo'; } catch {}
@@ -232,16 +233,30 @@ function renderFocus() {
     : `<li class="empty">Nothing pinned for today. Star a task in any project, or add one above.</li>`;
   const next = [];
   for (const g of C.groups) for (const it of g.items) { const t = open.find((x) => x.item === it.id && !x.focus); if (t) next.push({ t, it }); }
-  if (next.length) html += `<li class="f-sep">Up next</li>` + next.slice(0, 6).map(({ t, it }) => row(t, it, true)).join('');
+  if (next.length) html += `<li class="f-sep">Up next</li>` + next.slice(0, 5).map(({ t, it }) => row(t, it, true)).join('');
+  // Every pinned task is in the list; it scrolls (with a fade at the edge) when they don't all fit.
+  const scrollKeep = list.scrollTop;
   list.innerHTML = html;
-  // Keep only what fits: no half-cut rows.
-  while (list.scrollHeight > list.clientHeight + 1 && list.lastElementChild && list.lastElementChild.classList.contains('next')) list.lastElementChild.remove();
-  if (list.lastElementChild && list.lastElementChild.classList.contains('f-sep')) list.lastElementChild.remove();
+  list.scrollTop = scrollKeep;
+  fadeEdges(list);
+  if (justAdded) {
+    const li = list.querySelector(`[data-done="${CSS.escape(justAdded)}"]`);
+    justAdded = null;
+    if (li) { const f = li.closest('.f-item'); f.classList.add('flash'); f.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+  }
 
   const sel = $('#quickItem'), keep = sel.value;
   sel.innerHTML = C.groups.map((g) => `<optgroup label="${esc(g.name)}">${g.items.map((it) => `<option value="${esc(it.id)}">${esc(it.name)}</option>`).join('')}</optgroup>`).join('');
   if (keep && items.has(keep)) sel.value = keep;
 }
+
+// Fades the top/bottom edge of a scrolling list only where there is more to see.
+function fadeEdges(el) {
+  const up = el.scrollTop > 2, down = el.scrollTop + el.clientHeight < el.scrollHeight - 2;
+  el.classList.toggle('fade-top', up); el.classList.toggle('fade-bottom', down);
+}
+let justAdded = null;
+document.addEventListener('scroll', (e) => { if (e.target.classList && e.target.classList.contains('scroll')) fadeEdges(e.target); }, true);
 
 function renderStageCaption(alerts) {
   $('#caption').textContent = !S.refreshedAt ? 'Checking your servers…'
@@ -249,34 +264,79 @@ function renderStageCaption(alerts) {
     : `All systems normal · updated ${ago(S.refreshedAt)}`;
 }
 
+// The heatmap: 16 weeks × 7 days. Every cell and label is placed explicitly on the grid, columns
+// are minmax(0, 1fr) so a month name can never widen one and push the last column out of the card.
+const HEAT_WEEKS = 16;
 function renderActivity() {
   const A = S.activity;
-  const weeks = 16;
+  const weeks = HEAT_WEEKS;
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const dow = (today.getDay() + 6) % 7; // Monday = 0
   const start = new Date(today); start.setDate(start.getDate() - dow - (weeks - 1) * 7);
   let total = 0;
-  const cells = [], months = [];
+  const html = [];
   for (let w = 0; w < weeks; w++) {
     const first = new Date(start); first.setDate(first.getDate() + w * 7);
-    months.push(first.getDate() <= 7 ? first.toLocaleDateString('en-GB', { month: 'short' }) : '');
-  }
-  for (let d = 0; d < 7; d++) {
-    const row = [];
-    for (let w = 0; w < weeks; w++) {
-      const day = new Date(start); day.setDate(day.getDate() + w * 7 + d);
-      const n = (A && A.days[dayKey(day)]) || 0;
-      if (day <= today) total += n;
-      const lvl = n === 0 ? 0 : n <= 2 ? 1 : n <= 5 ? 2 : n <= 10 ? 3 : 4;
-      row.push(`<i class="c c${lvl}${+day === +today ? ' today' : ''}${day > today ? ' future' : ''}" title="${day.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}: ${n} commit${n === 1 ? '' : 's'}"></i>`);
+    if (first.getDate() <= 7) {
+      const span = Math.min(3, weeks - w);
+      html.push(`<span class="m${span < 3 ? ' end' : ''}" style="grid-row:1;grid-column:${w + 2} / span ${span}">${first.toLocaleDateString('en-GB', { month: 'short' })}</span>`);
     }
-    cells.push(row);
   }
   const labels = ['Mon', '', 'Wed', '', 'Fri', '', 'Sun'];
-  $('#heat').innerHTML = `<span></span>${months.map((m) => `<span class="m">${m}</span>`).join('')}` +
-    cells.map((row, d) => `<span class="d">${labels[d]}</span>${row.join('')}`).join('');
-  $('#activitySub').textContent = A ? `${fmtN(total)} commits in the last ${weeks} weeks · ${Object.keys(A.byRepo).length} repos` : 'Reading git history…';
+  for (let d = 0; d < 7; d++) {
+    html.push(`<span class="d" style="grid-row:${d + 2};grid-column:1">${labels[d]}</span>`);
+    for (let w = 0; w < weeks; w++) {
+      const day = new Date(start); day.setDate(day.getDate() + w * 7 + d);
+      const k = dayKey(day), n = (A && A.days[k]) || 0;
+      if (day <= today) total += n;
+      const lvl = n === 0 ? 0 : n <= 2 ? 1 : n <= 5 ? 2 : n <= 10 ? 3 : 4;
+      html.push(`<i class="c c${lvl}${+day === +today ? ' today' : ''}${day > today ? ' future' : ''}" data-day="${k}" style="grid-row:${d + 2};grid-column:${w + 2}"></i>`);
+    }
+  }
+  $('#heat').innerHTML = html.join('');
+  const repos = A ? Object.keys(A.byRepo || {}).length : 0;
+  $('#activitySub').textContent = A ? `${fmtN(total)} commits in the last ${weeks} weeks · ${repos} repo${repos === 1 ? '' : 's'}${A.perDay ? ' · hover a day' : ''}` : 'Reading git history…';
 }
+
+// ---------- custom tooltips ----------
+const tip = $('#tip');
+function showTip(anchor, html) {
+  tip.innerHTML = html;
+  tip.classList.add('on');
+  const r = anchor.getBoundingClientRect(), t = tip.getBoundingClientRect();
+  let x = r.left + r.width / 2 - t.width / 2, y = r.top - t.height - 10, below = false;
+  if (y < 8) { y = r.bottom + 10; below = true; }
+  x = Math.max(8, Math.min(window.innerWidth - t.width - 8, x));
+  tip.style.left = `${Math.round(x)}px`; tip.style.top = `${Math.round(y)}px`;
+  tip.style.setProperty('--arrow', `${Math.round(r.left + r.width / 2 - x)}px`);
+  tip.classList.toggle('below', below);
+}
+function hideTip() { tip.classList.remove('on'); }
+function dayTip(k) {
+  const A = S.activity || {};
+  const n = (A.days || {})[k] || 0;
+  const d = new Date(`${k}T12:00:00`), isToday = k === dayKey(new Date());
+  const per = Object.entries((A.perDay || {})[k] || {}).sort((a, b) => b[1] - a[1]);
+  const max = per.length ? per[0][1] : 1;
+  // That day's week (Mon..Sun) total, for context.
+  const mon = new Date(d); mon.setDate(mon.getDate() - ((mon.getDay() + 6) % 7));
+  let week = 0;
+  for (let i = 0; i < 7; i++) { const x = new Date(mon); x.setDate(x.getDate() + i); week += (A.days || {})[dayKey(x)] || 0; }
+  const future = d > new Date();
+  return `<div class="tip-h"><b>${esc(d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }))}</b>${isToday ? '<span class="tag accent">Today</span>' : ''}</div>
+    <div class="tip-n"><b>${future ? '·' : fmtN(n)}</b><span>${future ? 'still to come' : `commit${n === 1 ? '' : 's'}`}</span><em>${fmtN(week)} that week</em></div>
+    ${per.length ? `<div class="tip-rows">${per.slice(0, 6).map(([name, c]) => `<div class="tip-r"><span>${esc(name)}</span><i><b style="width:${Math.max(6, Math.round((c / max) * 100))}%"></b></i><em>${c}</em></div>`).join('')}
+      ${per.length > 6 ? `<div class="tip-more">+ ${per.length - 6} more project${per.length - 6 > 1 ? 's' : ''}</div>` : ''}</div>`
+      : `<div class="tip-empty">${future ? '' : n ? '' : pick(['A rest day.', 'Nothing committed. Fair enough.', 'Quiet day in git.'])}</div>`}`;
+}
+document.addEventListener('mouseover', (e) => {
+  const c = e.target.closest('.heat .c[data-day]');
+  if (c) { showTip(c, dayTip(c.dataset.day)); return; }
+  const t = e.target.closest('[data-tip]');
+  if (t) { showTip(t, `<div class="tip-plain">${esc(t.dataset.tip)}</div>`); return; }
+  if (!e.target.closest('#tip')) hideTip();
+});
+document.addEventListener('mouseleave', hideTip);
 
 function renderProjects(alerts, animate) {
   const ids = C.groups.map((g) => g.id).slice(0, 3).concat(['agents']);
@@ -327,19 +387,10 @@ function renderProjects(alerts, animate) {
   box.innerHTML = html;
 }
 
-// ---------- drawer ----------
+// ---------- projects open as a space (ui/spaces.js) ----------
 function itemFolder(it, group) { return it.repo || it.folder || group.repo || null; }
-function openDrawer(id) {
-  if (!items.has(id)) return;
-  openId = id;
-  renderDrawer();
-  $('#drawer').classList.add('on'); $('#drawer').setAttribute('aria-hidden', 'false'); $('#scrim').classList.add('on');
-  setTimeout(() => $('#dAddText').focus(), 400);
-}
-function closeDrawer() {
-  openId = null;
-  $('#drawer').classList.remove('on'); $('#drawer').setAttribute('aria-hidden', 'true'); $('#scrim').classList.remove('on');
-}
+function openDrawer(id) { if (items.has(id)) window.Spaces.open('project', id); }
+function closeDrawer() { window.Spaces.close(); }
 function todoRow(t, draggable) {
   const by = t.by && t.by.startsWith('agent:') ? `<span class="by">${esc(t.by.replace(/^agent:/, 'from '))}</span>` : '';
   return `<li class="todo" data-id="${esc(t.id)}" ${draggable ? 'draggable="true"' : ''}>
@@ -348,41 +399,7 @@ function todoRow(t, draggable) {
     ${t.done ? '<span></span>' : `<button class="act star ${t.focus ? 'on' : ''}" data-focus="${esc(t.id)}" title="${t.focus ? 'Unpin from focus' : 'Pin to focus'}">${icon('star')}</button>`}
     <button class="act" data-del="${esc(t.id)}" title="Delete">${icon('trash-2')}</button></li>`;
 }
-function renderDrawer() {
-  if (!openId || !items.has(openId)) return;
-  const { item: it, group } = items.get(openId);
-  const g = S.git[it.id];
-  $('#dGroup').textContent = group.name;
-  $('#dTitle').textContent = it.name;
-  $('#dSub').textContent = it.tagline || (it.status ? STATUS_LABEL[it.status] || it.status : it.paths && it.paths.length ? it.paths.join(' · ') : '');
-  const folder = itemFolder(it, group);
-  const acts = [];
-  if (it.session) acts.push(`<button class="btn-dark" data-session="${esc(it.session)}">${icon('message-circle')}Open chat</button>`);
-  if (folder) acts.push(`<button class="btn-ghost" data-claude="${esc(folder)}">${icon('square-terminal')}New Claude here</button>`, `<button class="btn-ghost" data-folder="${esc(folder)}">${icon('folder')}Folder</button>`);
-  if (it.url) acts.push(`<button class="btn-ghost" data-url="${esc(it.url)}">${icon('external-link')}Website</button>`);
-  $('#dActions').innerHTML = acts.join('');
-  const chips = [];
-  if (it.blocker) chips.push(`<span class="tag accent">${esc(it.blocker)}</span>`);
-  if (it.stage) chips.push(`<span class="tag muted">Stage: ${esc(it.stage)}</span>`);
-  const ver = (g && g.version) || it.version;
-  if (ver) chips.push(`<span class="tag muted">${esc(/^\d/.test(ver) ? `v${ver}` : ver)}</span>`);
-  if (g && g.lastAt) chips.push(`<span class="tag muted">Last commit ${ago(g.lastAt)}</span>`);
-  if (g && g.week) chips.push(`<span class="tag muted">${g.week} commit${g.week > 1 ? 's' : ''} this week</span>`);
-  if (g && g.dirty) chips.push(`<span class="tag warn">${g.dirty} uncommitted file${g.dirty > 1 ? 's' : ''}</span>`);
-  const site = it.site && S.sites[it.site];
-  if (site) chips.push(`<span class="tag ${site.ok ? 'ok' : 'bad'}">${site.ok ? `Site up · ${site.ms} ms` : 'Site down'}</span>`);
-  $('#dChips').innerHTML = chips.join('');
-  const mine = T.items.filter((t) => t.item === it.id);
-  const open = mine.filter((t) => !t.done);
-  const done = mine.filter((t) => t.done).sort((a, b) => Date.parse(b.doneAt || 0) - Date.parse(a.doneAt || 0)).slice(0, 6);
-  $('#dCount').textContent = open.length || '';
-  $('#dTodos').innerHTML = open.length ? open.map((t) => todoRow(t, true)).join('') : `<li class="empty">No open tasks. Add one below.</li>`;
-  $('#dDoneSec').style.display = done.length ? '' : 'none';
-  $('#dDone').innerHTML = done.map((t) => todoRow(t, false)).join('');
-  const commits = (g && g.recent) || [];
-  $('#dCommitsSec').style.display = commits.length ? '' : 'none';
-  $('#dCommits').innerHTML = commits.map((c) => `<li><time>${esc(ago(c.at))}</time><span>${esc(c.subject)}</span></li>`).join('');
-}
+function renderDrawer() { if (window.Spaces) window.Spaces.refresh(); }
 
 // ---------- search ----------
 let searchSel = 0, searchHits = [];
@@ -503,16 +520,24 @@ function reactToAgents(list) {
 // ---------- focus sessions ----------
 function renderFocusBanner() {
   const box = $('#focusBanner');
-  if (!FOCUS) { box.className = 'focus-banner hidden'; box.innerHTML = ''; return; }
+  if (!FOCUS) { box.className = 'focus-banner hidden'; box.innerHTML = ''; box.dataset.id = ''; return; }
   const left = Math.max(0, FOCUS.endsAt - Date.now());
   const total = FOCUS.planned * 60000;
   const pct = 1 - left / total;
   const mm = Math.floor(left / 60000), ss = Math.floor((left % 60000) / 1000);
   const C2 = 2 * Math.PI * 15;
+  const time = `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+  // Update in place each second (no flicker, hover states survive); rebuild only when it starts.
+  if (box.dataset.id === FOCUS.id && box.querySelector('.fb-main b')) {
+    box.querySelector('.fb-main b').textContent = time;
+    box.querySelector('.ring .fill').style.strokeDashoffset = (C2 * (1 - pct)).toFixed(1);
+    return;
+  }
   box.className = 'focus-banner';
+  box.dataset.id = FOCUS.id;
   box.innerHTML = `<svg class="ring" viewBox="0 0 36 36"><circle cx="18" cy="18" r="15" class="track"/><circle cx="18" cy="18" r="15" class="fill" style="stroke-dasharray:${C2.toFixed(1)};stroke-dashoffset:${(C2 * (1 - pct)).toFixed(1)}"/></svg>
-    <div class="fb-main"><b>${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}</b><span>${esc(FOCUS.text)}</span></div>
-    <button class="btn-ghost sm" id="focusStop">${icon('square')}Stop</button>`;
+    <div class="fb-main"><b>${time}</b><span>${esc(FOCUS.text)}</span></div>
+    <div class="fb-acts"><button class="fb-btn" id="focusMore" data-tip="Add 5 minutes">+5</button><button class="fb-btn stop" id="focusStop">${icon('square')}Stop</button></div>`;
 }
 setInterval(() => { if (FOCUS) renderFocusBanner(); }, 1000);
 function startFocus(todoId, minutes) {
@@ -534,7 +559,7 @@ function render() {
   renderProjects(alerts, false);
   updateMood(alerts);
   $('#refresh').classList.toggle('spin', !!(S && S.refreshing));
-  if (openId && !$('#drawer [contenteditable="true"]')) renderDrawer();
+  if (window.Spaces && !$('#spacePanel [contenteditable="true"]')) window.Spaces.refresh();
 }
 
 // The mascot reacts to to-dos finished or added anywhere (here or by a Claude session).
@@ -558,6 +583,10 @@ document.addEventListener('click', (e) => {
   if (!e.target.closest('#pcPill, #pcPop')) $('#pcPop').classList.remove('on');
   if (e.target.closest('#pcPill')) { renderPcPop(); $('#pcPop').classList.toggle('on'); return; }
   if (e.target.closest('#focusStop')) { window.cy.focusStop(); return; }
+  if (e.target.closest('#focusMore')) { window.cy.focusExtend(5); window.Buddy.say('Five more minutes. You got this.', 3500); return; }
+  if (e.target.closest('#health .card-head, #health .gauge-wrap')) { window.Spaces.open('servers'); return; }
+  const sp = e.target.closest('.nav-btn[data-space]');
+  if (sp) { window.Spaces.toggle(sp.dataset.space); return; }
   const ag = e.target.closest('[data-agent]');
   if (ag) { const a = AGENTS[+ag.dataset.agent]; if (a) window.cy.openAgent(a); return; }
   const st = e.target.closest('[data-start]');
@@ -569,7 +598,7 @@ document.addEventListener('click', (e) => {
     const t = d.tab || d.nav;
     if (t !== tab) { tab = t; try { localStorage.setItem('cy.tab', tab); } catch {} renderProjects(alertsOf(computeChecks()), true); }
   }
-  else if (d.nav === 'overview') { closeDrawer(); document.querySelectorAll('[data-nav]').forEach((b) => b.classList.toggle('on', b.dataset.nav === 'overview')); }
+  else if (d.nav === 'overview') { window.Spaces.close(); document.querySelectorAll('[data-nav]').forEach((b) => b.classList.toggle('on', b.dataset.nav === 'overview')); }
   else if (d.open) { $('#searchResults').classList.remove('on'); $('#search').value = ''; openDrawer(d.open); }
   else if (d.done) { el.classList.add('on'); setTimeout(() => window.cy.patchTodo(d.done, { done: true }), 260); }
   else if (d.toggle) {
@@ -598,23 +627,27 @@ document.addEventListener('dblclick', (e) => {
     el.contentEditable = 'false';
     const text = el.textContent.trim();
     if (save && text && text !== t.text) window.cy.patchTodo(t.id, { text });
-    else renderDrawer();
+    else { el.textContent = t.text; renderDrawer(); }
   };
   const onKey = (k) => { if (k.key === 'Enter') { k.preventDefault(); finish(true); } if (k.key === 'Escape') { k.stopPropagation(); finish(false); } };
   const onBlur = () => finish(true);
   el.addEventListener('keydown', onKey); el.addEventListener('blur', onBlur);
 });
 
+// Drag to reorder a project's to-dos (the list lives in the project space, so events are delegated).
 let dragId = null;
-$('#dTodos').addEventListener('dragstart', (e) => { const li = e.target.closest('.todo'); if (!li) return; dragId = li.dataset.id; li.classList.add('drag'); e.dataTransfer.effectAllowed = 'move'; });
-$('#dTodos').addEventListener('dragend', (e) => { const li = e.target.closest('.todo'); if (li) li.classList.remove('drag'); dragId = null; });
-$('#dTodos').addEventListener('dragover', (e) => {
+const inTodos = (e) => e.target.closest && e.target.closest('#dTodos');
+document.addEventListener('dragstart', (e) => { if (!inTodos(e)) return; const li = e.target.closest('.todo'); if (!li) return; dragId = li.dataset.id; li.classList.add('drag'); e.dataTransfer.effectAllowed = 'move'; });
+document.addEventListener('dragend', (e) => { const li = e.target.closest && e.target.closest('.todo'); if (li) li.classList.remove('drag'); dragId = null; });
+document.addEventListener('dragover', (e) => {
+  if (!inTodos(e)) return;
   const li = e.target.closest('.todo'); if (!li || !dragId) return;
   e.preventDefault();
   document.querySelectorAll('.todo.over').forEach((x) => x.classList.remove('over'));
   li.classList.add('over');
 });
-$('#dTodos').addEventListener('drop', (e) => {
+document.addEventListener('drop', (e) => {
+  if (!inTodos(e)) return;
   e.preventDefault();
   const li = e.target.closest('.todo');
   document.querySelectorAll('.todo.over').forEach((x) => x.classList.remove('over'));
@@ -627,20 +660,23 @@ $('#quickAdd').addEventListener('submit', async (e) => {
   e.preventDefault();
   const text = $('#quickText').value.trim();
   if (!text) return;
-  await window.cy.addTodo({ item: $('#quickItem').value, text, focus: true });
+  const t = await window.cy.addTodo({ item: $('#quickItem').value, text, focus: true });
+  justAdded = t && t.id;
   $('#quickText').value = '';
   window.Buddy.say('Got it. Pinned to your focus.', 4000);
+  window.Buddy.run('nod');
 });
 $('#newTask').addEventListener('click', () => $('#quickText').focus());
-$('#dAdd').addEventListener('submit', async (e) => {
+// Adding a task inside a project space.
+document.addEventListener('submit', async (e) => {
+  if (e.target.id !== 'dAdd') return;
   e.preventDefault();
-  const text = $('#dAddText').value.trim();
-  if (!text || !openId) return;
-  await window.cy.addTodo({ item: openId, text });
-  $('#dAddText').value = '';
+  const input = $('#dAddText'), text = input.value.trim(), id = window.Spaces.projectId();
+  if (!text || !id) return;
+  await window.cy.addTodo({ item: id, text });
+  input.value = '';
+  window.Buddy.run('nod');
 });
-$('#dClose').addEventListener('click', closeDrawer);
-$('#scrim').addEventListener('click', closeDrawer);
 $('#refresh').addEventListener('click', () => { window.cy.refresh(); window.Buddy.say('Checking everything…', 3000); });
 $('#bell').addEventListener('click', () => $('#alertsPop').classList.toggle('on'));
 $('#themeBtn').addEventListener('click', () => window.cy.setTheme(THEME === 'dark' ? 'light' : 'dark'));
@@ -654,7 +690,9 @@ $('#search').addEventListener('keydown', (e) => {
   } else if (e.key === 'Enter' && rows[searchSel]) rows[searchSel].click();
   else if (e.key === 'Escape') { $('#search').value = ''; runSearch(); $('#search').blur(); }
 });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && openId) closeDrawer(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && window.Spaces.current() && !$('#modal').classList.contains('on') && !(e.target.closest && e.target.closest('input, [contenteditable="true"]'))) window.Spaces.close();
+});
 
 function renderProfile() {
   const p = C.profile || { name: USER };
@@ -676,6 +714,11 @@ function setTheme(th) {
   const init = await window.cy.init();
   C = init.config; T = init.todos; S = init.status; USER = (init.config.profile && init.config.profile.name) || init.user || '';
   AGENTS = init.agents || []; VITALS = init.vitals; FOCUS = init.focus; FOCUS_WEEK = init.focusWeek || FOCUS_WEEK; SETTINGS = init.settings || {};
+  PLATFORM = init.platform || PLATFORM;
+  window.__dataDir = init.dataDir || '';
+  document.body.dataset.os = PLATFORM.os;
+  window.__companion = SETTINGS.companion;
+  if (window.Companion) window.Companion.apply(SETTINGS.companion);
   agentSeen = new Map(AGENTS.map((a) => [a.sessionId, a.status]));
   renderProfile();
   window.__version = init.version;
@@ -705,7 +748,8 @@ function setTheme(th) {
   window.cy.on('focus', (f) => {
     FOCUS = f.active; FOCUS_WEEK = f.week || FOCUS_WEEK;
     window.Buddy.setFocus(!!FOCUS);
-    if (f.active) window.Buddy.say(`Focus: ${f.active.planned} min on “${f.active.text.slice(0, 50)}”. I'll keep quiet.`, 7000);
+    if (f.active && f.extended) { /* +5: the banner updates, Cy already answered */ }
+    else if (f.active) window.Buddy.say(`Focus: ${f.active.planned} min on “${f.active.text.slice(0, 50)}”. I'll keep quiet.`, 7000);
     else if (f.ended && !f.stopped) window.Buddy.celebrate(`${f.ended.minutes} focused minutes! Take 5.`);
     else if (f.stopped) window.Buddy.say(`Stopped after ${f.ended ? f.ended.minutes : 0} min. No worries.`, 4000);
     renderFocusBanner(); renderFocus(); renderHero();
@@ -715,6 +759,14 @@ function setTheme(th) {
     ['levelchange', 'chargingchange'].forEach((ev) => b.addEventListener(ev, upd)); upd();
   }).catch(() => {});
   window.cy.on('sing', (on) => window.Buddy.setSinging(on));
+  window.cy.on('companion', (c) => { SETTINGS.companion = c; window.__companion = c; if (window.Companion) window.Companion.apply(c); });
+  // New commits anywhere: Cy cheers (once in a while, not for every single one).
+  let lastCheer = 0;
+  window.cy.on('commits', (c) => {
+    if (Date.now() - lastCheer < 20 * 60000 || FOCUS) return;
+    lastCheer = Date.now();
+    window.Buddy.celebrate(c.added > 1 ? `${c.added} new commits. Shipping!` : pick(['New commit! Nice.', 'Another commit in the bag.', 'Commit spotted. Keep going!']));
+  });
   window.Buddy.setSinging(init.sing !== false);
   window.Buddy.ideaSource = ideas;
   setInterval(renderHero, 30000);

@@ -116,13 +116,14 @@
   }
 
   // ---------------------------------------------------------------- drawing
-  let dirty = true, lastKey = '';
+  let dirty = true, lastKey = '', headless = false;
   function weights() {
     const acc = {};
     for (const [l, w] of currentMix()) for (const [n, sw] of samples(l)) if (sw * w > 0.004) acc[n] = (acc[n] || 0) + sw * w;
     return acc;
   }
   function draw() {
+    if (headless) return; // a custom 3D model is drawn instead (ui/model.js)
     const ws = weights();
     const key = Object.entries(ws).map(([n, w]) => `${n}:${w.toFixed(3)}`).join('|') + `|${eye.x.toFixed(2)},${eye.y.toFixed(2)}`;
     if (key === lastKey && !dirty) return;
@@ -241,7 +242,7 @@
   // ---------------------------------------------------------------- state
   let base = { mood: 'happy', level: 'ok', lines: ['Hi!'] };
   let emote = null, emoteUntil = 0, faceOverride = null;
-  let paused = false, asleep = false, sitting = false, focusMode = false;
+  let paused = false, asleep = false, sitting = false, focusMode = false, space = null;
   let lastActivity = Date.now(), lineIndex = 0, sayLock = 0, pokes = [];
   const moodFace = () => faceOverride || (emote && Date.now() < emoteUntil ? emote : null) || (asleep ? 'sleepy' : sing.on ? (sing.env > 0.62 ? 'singLoud' : 'sing') : base.mood);
 
@@ -405,7 +406,8 @@
   }
   const A = {
     async lookAround(tk) {
-      const spots = ['#health', '#focusList', '#plist', '#heat', '#greet', '#serverPills', '#stats'];
+      const spots = space ? ['#spacePanel .sp-head', '#spacePanel .sp-card', '#spacePanel .sp-card:last-child', '#spacePanel .sp-kpis', '#focusList', '#health']
+        : ['#health', '#focusList', '#plist', '#heat', '#greet', '#serverPills', '#stats'];
       for (let i = 0, n = Math.floor(rand(2, 4)); i < n; i++) {
         lookAtEl(pick(spots), rand(3, 6)); await wait(rand(900, 2200), tk);
         if (Math.random() < 0.3) blink();
@@ -460,21 +462,101 @@
     },
     async shrug(tk) {
       setLook(F('shrug'), 260); lookAtEl('#health', 4); say(base.lines[0], 5000); await wait(1500, tk); setLook(GAZE, 300);
+    },
+    // v1.1 -------------------------------------------------------------
+    async dance(tk) {
+      prefetch(['dance_0', 'dance_1']);
+      faceOverride = 'giggle'; applyFace();
+      for (let i = 0; i < 8; i++) {
+        setLook(F(i % 2 ? 'dance_1' : 'dance_0'), 170); aim(i % 2 ? 8 : -8, -3, 6);
+        if (i % 2) once('beat', 260); if (i % 3 === 0) notes(1);
+        await wait(380, tk);
+      }
+      once('hop', 750); faceOverride = null; applyFace(); setLook(GAZE, 300); aim(0, 0, 3);
+    },
+    async think(tk) {
+      prefetch(['think']);
+      setLook(F('think'), 380); aim(-10, -8, 2.5); faceOverride = 'curious'; applyFace();
+      dots();
+      await wait(2600, tk);
+      faceOverride = null; applyFace(); setLook(GAZE, 380);
+      if (Math.random() < 0.6) { await wait(200, tk); await A.idea(tk); } else say(pick(['Hmm. Never mind.', 'Lost my train of thought.', 'Thinking about lunch, honestly.']), 3500);
+    },
+    async point(tk, text) {
+      prefetch(['point']);
+      setLook(F('point'), 300); aim(18, -2, 5);
+      if (text) say(text, 6000);
+      await wait(1800, tk);
+      setLook(GAZE, 380); aim(14, 0, 3);
+    },
+    async bow(tk) {
+      prefetch(['bow']);
+      setLook(F('bow'), 420); aim(0, 10, 3); await wait(900, tk);
+      setLook(GAZE, 420); aim(0, 0, 3);
+    },
+    async peekaboo(tk) {
+      say(pick(['Where did I go?', 'Hide and seek!']), 2500);
+      el.classList.add('hide'); micEl.classList.remove('on');
+      await wait(rand(1800, 2800), tk);
+      el.classList.remove('hide'); setEmote('surprised', 1400); burst('bang'); once('hop', 750);
+      say(pick(['Boo!', 'Peekaboo!', 'Found you.']), 3000);
+    },
+    async coffee(tk) { await holdProp(tk, '☕', pick(['Coffee first. Then code.', 'Morning fuel. Want one too?']), 'happy'); },
+    async water(tk) { await holdProp(tk, '💧', pick(['Sip of water? I am having one.', 'Hydration check!']), 'content'); },
+    async lunch(tk) { await holdProp(tk, '🥪', pick(['Lunch break? You earned it.', 'My tummy says it is lunch time.']), 'giggle'); },
+    async nod(tk) {
+      for (let i = 0; i < 2; i++) { aim(head.ty, 8, 9); await wait(170, tk); aim(head.ty, -2, 9); await wait(170, tk); }
+      aim(0, 0, 4);
+    },
+    async headShake(tk) {
+      for (let i = 0; i < 2; i++) { aim(-10, 2, 9); await wait(190, tk); aim(10, 2, 9); await wait(190, tk); }
+      aim(0, 0, 4);
+    },
+    async endOfDay(tk) {
+      say(pick(['Good work today. Wrap up soon?', 'Day is nearly done. Write down where you stopped?']), 8000);
+      await A.wave(tk);
     }
   };
+  // Holds something (coffee, water, a sandwich) in both paws for a few seconds.
+  async function holdProp(tk, emoji, text, mood) {
+    prefetch(['hold']);
+    setLook(F('hold'), 380); aim(0, 7, 3); faceOverride = mood; applyFace();
+    fx.insertAdjacentHTML('beforeend', `<span class="prop">${emoji}</span>`);
+    const p = fx.lastElementChild;
+    say(text, 6000);
+    try { await wait(3200, tk); } finally { p.remove(); faceOverride = null; applyFace(); setLook(GAZE, 380); aim(0, 0, 3); }
+  }
+  function dots() {
+    fx.insertAdjacentHTML('beforeend', '<span class="dots"><i></i><i></i><i></i></span>');
+    const d = fx.lastElementChild; setTimeout(() => d.remove(), 2800);
+  }
   async function standUp() {
     sitting = false; asleep = false; applyFace();
     el.classList.add('rise'); setTimeout(() => el.classList.remove('rise'), 520);
     setLook(GAZE, 420); aim(0, 0, 3);
   }
+  // Things that happen once a day at the right time (coffee, lunch, end of the day).
+  const daily = {};
+  const onceToday = (k) => { const d = new Date().toDateString(); if (daily[k] === d) return false; daily[k] = d; return true; };
+  function timely() {
+    const d = new Date(), h = d.getHours() + d.getMinutes() / 60;
+    if (h >= 7.5 && h < 10 && onceToday('coffee')) return 'coffee';
+    if (h >= 12.5 && h < 14 && onceToday('lunch')) return 'lunch';
+    if (h >= 18 && h < 20 && d.getDay() % 6 && onceToday('eod')) return 'endOfDay';
+    return null;
+  }
   function schedule() {
     setTimeout(() => {
       if (!paused && !act && !sing.on && !asleep && !tracking && !(emote && Date.now() < emoteUntil)) {
-        const h = new Date().getHours(), night = h < 6 || h >= 23;
+        const d = new Date(), h = d.getHours(), night = h < 6 || h >= 23, friday = d.getDay() === 5 && h >= 15;
+        const special = !focusMode && base.level === 'ok' && timely();
         const table = focusMode ? [['sit', 3], ['none', 7]]
           : base.level === 'bad' ? [['grumble', 4], ['lookAround', 4], ['shrug', 1]]
-          : base.level === 'warn' ? [['shrug', 3], ['lookAround', 5], ['sit', 1], ['idea', 1]]
-          : [['lookAround', 30], ['sit', night ? 22 : 11], ['idea', 9], ['turnAround', 5], ['wave', 5], ['stretch', night || h < 10 ? 10 : 5], ['hum', 6], ['hop', 6], ['none', 23]];
+          : base.level === 'warn' ? [['shrug', 3], ['lookAround', 5], ['sit', 1], ['idea', 1], ['think', 1]]
+          : space ? [['lookAround', 30], ['think', 8], ['idea', 6], ['point', 6], ['wave', 3], ['hum', 4], ['dance', 2], ['none', 25]]
+          : [['lookAround', 30], ['sit', night ? 22 : 11], ['idea', 9], ['think', 5], ['turnAround', 5], ['wave', 5], ['stretch', night || h < 10 ? 10 : 5], ['hum', 6], ['hop', 6],
+            ['dance', friday ? 8 : 2], ['peekaboo', 2], ['water', h >= 10 && h < 18 ? 3 : 0], ['none', 23]];
+        if (special) { run(special, A[special]); schedule(); return; }
         let r = Math.random() * table.reduce((s, [, v]) => s + v, 0), choice = 'none';
         for (const [n, v] of table) { if ((r -= v) <= 0) { choice = n; break; } }
         if (choice !== 'none') run(choice, A[choice]);
@@ -600,7 +682,8 @@
     el.classList.remove('singing'); micEl.classList.remove('on');
     setLook(GAZE, 400); aim(0, 7, 3); setTimeout(() => aim(0, 0, 3), 700);
     applyFace();
-    say(pick(['Thank you, thank you!', '*bows*', 'Encore?', 'That was a good one.']), 4000);
+    say(pick(['Thank you, thank you!', 'Encore?', 'That was a good one.', 'Thank you, you have been great.']), 4000);
+    setTimeout(() => { if (!sing.on && !act) run('bow', A.bow); }, 450);
   }
   function singTick(t, dt) {
     // Envelope: fast attack, slower release; avg tracks the song's typical level for beat detection.
@@ -667,12 +750,29 @@
       focusMode = !!on;
       if (on && act && act.name !== 'sit') { cancelAct(); setLook(GAZE, 300); }
     },
-    run: (name) => { if (A[name]) run(name, A[name]); },
+    run: (name, arg) => { if (A[name]) run(name, (tk) => A[name](tk, arg)); },
+    // A space opened beside Cy (or closed: null). Cy gets up, faces it and points.
+    setSpace: (name, line) => {
+      const was = space; space = name || null;
+      if (paused) return;
+      lastActivity = Date.now();
+      if (space) {
+        if (asleep) { asleep = false; applyFace(); }
+        cancelAct(); if (sitting) standUp();
+        if (!was) once('hop', 750);
+        setTimeout(() => { fitCanvas(); dirty = true; run('point', (tk) => A.point(tk, line)); }, was ? 80 : 620);
+      } else if (was) {
+        cancelAct(); setTimeout(() => { fitCanvas(); dirty = true; setLook(GAZE, 300); aim(0, 0, 3); wakeLoop(); }, 620);
+        if (line) say(line, 3000);
+      }
+    },
+    setHeadless: (on) => { headless = !!on; if (!on) { dirty = true; wakeLoop(); } else ctx.clearRect(0, 0, canvas.width, canvas.height); },
+    relayout: () => { fitCanvas(); dirty = true; wakeLoop(); },
     ideaSource: null,
     get state() {
       return { emote: emote && Date.now() < emoteUntil ? emote : null, asleep, sitting, paused, base, mode, focus: focusMode, interest: +interest.toFixed(2),
-        activity: act ? act.name : null, singing: sing.on, look: look.kind === 'frame' ? look.name : look.kind,
-        yaw: +head.yaw.toFixed(1), pitch: +head.pitch.toFixed(1), face: moodFace() };
+        activity: act ? act.name : null, singing: sing.on, look: look.kind === 'frame' ? look.name : look.kind, space,
+        yaw: +head.yaw.toFixed(1), pitch: +head.pitch.toFixed(1), face: moodFace(), headless };
     }
   };
 })();

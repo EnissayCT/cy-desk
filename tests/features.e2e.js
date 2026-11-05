@@ -12,8 +12,10 @@ module.exports = async (h) => {
   const text = (sel) => h.js(`(document.querySelector(${JSON.stringify(sel)})||{}).textContent||''`);
   const has = (sel, cls) => h.js(`!!(document.querySelector(${JSON.stringify(sel)})||{classList:{contains:()=>false}}).classList.contains(${JSON.stringify(cls)})`);
   const click = (sel) => h.js(`document.querySelector(${JSON.stringify(sel)}).click()`);
-  const cfgBefore = fs.readFileSync(path.join(__dirname, '..', 'config.json'), 'utf8');
+  const CFG = require('../lib/paths').CONFIG_FILE; // the demo's copy in npm test
+  const cfgBefore = fs.readFileSync(CFG, 'utf8');
   await h.wait(9000);
+  await h.js(`SETTINGS.lastBrief = dayKey(new Date()); Panels.close()`); await h.wait(300);
 
   // agents board
   await click('[data-tab="agents"]'); await h.wait(500);
@@ -52,9 +54,9 @@ module.exports = async (h) => {
 
   // settings
   await click('#settingsBtn'); await h.wait(700);
-  ok('settings open', await has('#modal', 'on') && (await n('#modal .s-tabs button')) === 5);
+  ok('settings open', await has('#modal', 'on') && (await n('#modal .s-tabs button')) === 7);
   await h.shot(path.join(dir, 'settings-general.png'));
-  for (const t of ['servers', 'sites', 'projects', 'about']) {
+  for (const t of ['servers', 'sites', 'projects', 'claude', 'companion', 'about']) {
     await click(`[data-stab="${t}"]`); await h.wait(300);
     ok(`settings tab ${t}`, (await n('#sBody > *')) > 0);
     if (t === 'servers') {
@@ -66,6 +68,8 @@ module.exports = async (h) => {
       for (let i = 0; i < 40 && (!out || out === 'Testing…'); i++) { await h.wait(500); out = await text(`[data-testout="${sid}"]`); }
       ok('server test reports a result', !!out && out !== 'Testing…', out);
     }
+    if (t === 'claude') { await h.wait(1500); ok('settings: Claude status', (await text('#sBody')).includes('Claude Code')); }
+    if (t === 'companion') ok('settings: two companions', (await n('#sBody .comp-card')) === 2);
     if (t === 'projects') await h.shot(path.join(dir, 'settings-projects.png'));
   }
   // invalid site is refused
@@ -73,7 +77,7 @@ module.exports = async (h) => {
   await h.js(`document.querySelector('#siteUrl').value = 'http://not-https.example'; document.querySelector('#addSite').click()`); await h.wait(200);
   ok('refuses a non-https site', (await text('#sMsg')).includes('https'));
   await click('#modal [data-close]'); await h.wait(300);
-  ok('config untouched by Cancel', fs.readFileSync(path.join(__dirname, '..', 'config.json'), 'utf8') === cfgBefore);
+  ok('config untouched by Cancel', fs.readFileSync(CFG, 'utf8') === cfgBefore);
 
   // setup wizard (opened, walked, cancelled before saving)
   await h.js(`Panels.openWizard()`); await h.wait(600);
@@ -90,7 +94,7 @@ module.exports = async (h) => {
   ok('wizard last step', (await text('.wz-body h2')).includes('set'));
   await h.shot(path.join(dir, 'wizard-4.png'));
   await h.js(`Panels.close()`); await h.wait(300);
-  ok('config still untouched', fs.readFileSync(path.join(__dirname, '..', 'config.json'), 'utf8') === cfgBefore);
+  ok('config still untouched', fs.readFileSync(CFG, 'utf8') === cfgBefore);
 
   h.log(`${failed ? 'FAILED' : 'ALL PASSED'}: ${failed} failure(s)`);
   if (failed) process.exitCode = 1;

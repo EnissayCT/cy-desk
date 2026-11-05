@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-QHspYcLLOKSarKa9WCONpLgp80qJjPebMyusqjGSeoo='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' blob: data:; font-src 'self'">
+  <!-- three.js for a custom 3D companion (ui/model.js); the hash above allows this map. -->
+  <script type="importmap">{"imports":{"three":"../node_modules/three/build/three.module.js","three/addons/":"../node_modules/three/examples/jsm/"}}</script>
   <title>CY Desk</title>
   <link rel="stylesheet" href="style.css">
 </head>
@@ -16,6 +18,13 @@
         <button class="nav-btn" data-nav="g1" title="Group 1"><i data-icon="layers"></i></button>
         <button class="nav-btn" data-nav="g2" title="Group 2"><i data-icon="puzzle"></i></button>
         <button class="nav-btn" data-nav="g3" title="Group 3"><i data-icon="rocket"></i></button>
+      </div>
+      <!-- Spaces: Cy stands up and the stage opens into a full page. -->
+      <div class="nav nav-spaces" id="spaceNav">
+        <button class="nav-btn" data-space="claude" title="Claude"><i data-icon="bot"></i></button>
+        <button class="nav-btn" data-space="servers" title="Servers"><i data-icon="server"></i></button>
+        <button class="nav-btn" data-space="money" title="Money"><i data-icon="wallet"></i></button>
+        <button class="nav-btn" data-space="health" title="Health"><i data-icon="heart-pulse"></i></button>
       </div>
       <div class="nav nav-bottom">
         <button class="nav-btn" id="briefBtn" title="Daily brief"><i data-icon="sunrise"></i></button>
@@ -62,7 +71,7 @@
             <select id="quickItem" aria-label="Project"></select>
             <input id="quickText" placeholder="What needs doing?" maxlength="300">
           </form>
-          <ol class="focus-list" id="focusList"></ol>
+          <ol class="focus-list scroll" id="focusList"></ol>
         </section>
       </div>
 
@@ -73,14 +82,20 @@
           <div class="mascot" id="mascot" title="Poke me">
             <canvas id="mascotCanvas"></canvas>
             <svg class="face" id="face" aria-hidden="true"></svg>
+            <div class="model-stage" id="modelStage"></div>
             <div class="fx" id="fx"></div>
           </div>
           <img class="mic" id="mic" alt="">
 
           <div class="floor"></div>
           <div class="stage-caption" id="caption"></div>
+          <!-- A space (Claude, servers, money, health, a project) opens here, on both sides of Cy. -->
+          <div class="space-panel" id="spacePanel" aria-hidden="true">
+            <div class="sp-side left scroll" id="spaceLeft"></div>
+            <div class="sp-side right scroll" id="spaceRight"></div>
+          </div>
         </section>
-        <section class="card activity">
+        <section class="card activity" id="activityCard">
           <div class="card-head"><div><h2>Activity</h2><p id="activitySub"></p></div>
             <div class="legend"><span>Less</span><i class="c0"></i><i class="c1"></i><i class="c2"></i><i class="c3"></i><i class="c4"></i><span>More</span></div></div>
           <div class="heat" id="heat"></div>
@@ -97,35 +112,7 @@
     </main>
   </div>
 
-  <div class="scrim" id="scrim"></div>
-  <aside class="drawer" id="drawer" aria-hidden="true">
-    <div class="drawer-inner">
-      <header class="d-head">
-        <div>
-          <div class="d-group" id="dGroup"></div>
-          <h1 id="dTitle"></h1>
-          <div class="d-sub" id="dSub"></div>
-        </div>
-        <button class="icon-btn" id="dClose" title="Close (Esc)"><i data-icon="x"></i></button>
-      </header>
-      <div class="d-actions" id="dActions"></div>
-      <div class="d-chips" id="dChips"></div>
-      <section class="d-sec">
-        <h3>To-do <span id="dCount"></span></h3>
-        <ul class="todo-list" id="dTodos"></ul>
-        <form id="dAdd" autocomplete="off"><input id="dAddText" placeholder="Add a task to this project…" maxlength="300"></form>
-      </section>
-      <section class="d-sec" id="dDoneSec">
-        <h3>Done recently</h3>
-        <ul class="todo-list done" id="dDone"></ul>
-      </section>
-      <section class="d-sec" id="dCommitsSec">
-        <h3>Recent commits</h3>
-        <ul class="commits" id="dCommits"></ul>
-      </section>
-    </div>
-  </aside>
-
+  <div class="tip" id="tip" role="tooltip"></div>
   <div class="modal-scrim" id="modalScrim"></div>
   <section class="modal" id="modal" role="dialog" aria-modal="true"></section>
 
@@ -133,6 +120,8 @@
   <script src="mascot/anchors.js"></script>
   <script src="mascot.js"></script>
   <script src="app.js"></script>
+  <script src="spaces.js"></script>
   <script src="panels.js"></script>
+  <script type="module" src="model.js"></script>
 </body>
 </html>

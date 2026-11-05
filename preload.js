@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('cy', {
   openAgent: (a) => ipcRenderer.invoke('open:agent', a),
   focusStart: (f) => ipcRenderer.invoke('focus:start', f),
   focusStop: () => ipcRenderer.invoke('focus:stop'),
+  focusExtend: (m) => ipcRenderer.invoke('focus:extend', m),
   buildBrief: (alerts) => ipcRenderer.invoke('brief:build', alerts),
   copy: (text) => ipcRenderer.invoke('clipboard:write', text),
   setSettings: (patch) => ipcRenderer.invoke('settings:set', patch),
@@ -25,7 +26,22 @@ contextBridge.exposeInMainWorld('cy', {
   pickFolder: () => ipcRenderer.invoke('dialog:folder'),
   pickKey: () => ipcRenderer.invoke('dialog:key'),
   notify: (n) => ipcRenderer.invoke('notify', n),
+  claudeUsage: (force) => ipcRenderer.invoke('claude:usage', force),
+  claudeStatus: () => ipcRenderer.invoke('claude:status'),
+  claudeConnect: () => ipcRenderer.invoke('claude:connect'),
+  claudeMd: (on) => ipcRenderer.invoke('claude:md', on),
+  ledger: () => ipcRenderer.invoke('ledger:get'),
+  ledgerAdd: (e) => ipcRenderer.invoke('ledger:add', e),
+  ledgerRecurring: (r) => ipcRenderer.invoke('ledger:recurring', r),
+  ledgerRemove: (id) => ipcRenderer.invoke('ledger:remove', id),
+  ledgerOptions: (o) => ipcRenderer.invoke('ledger:options', o),
+  health: () => ipcRenderer.invoke('health:get'),
+  healthLog: (what, value) => ipcRenderer.invoke('health:log', what, value),
+  healthGoals: (g) => ipcRenderer.invoke('health:goals', g),
+  companionPick: () => ipcRenderer.invoke('companion:pick'),
+  companionSet: (c) => ipcRenderer.invoke('companion:set', c),
+  companionData: (file) => ipcRenderer.invoke('companion:data', file),
   on: (channel, fn) => {
-    if (['status', 'todos', 'config', 'theme', 'cursor', 'covered', 'audio', 'sing', 'agents', 'vitals', 'focus'].includes(channel)) ipcRenderer.on(channel, (_e, payload) => fn(payload));
+    if (['status', 'todos', 'config', 'theme', 'cursor', 'covered', 'audio', 'sing', 'agents', 'vitals', 'focus', 'commits', 'companion'].includes(channel)) ipcRenderer.on(channel, (_e, payload) => fn(payload));
   }
 });

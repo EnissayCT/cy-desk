@@ -77,7 +77,7 @@
     draft.profile = draft.profile || { name: USER, fullName: USER, role: '' };
     const login = await window.cy.getLogin();
     open(`<div class="m-head"><div class="m-ic">${icon('settings')}</div><div><h2>Settings</h2><p>CY Desk ${esc(window.__version || '')}</p></div><button class="icon-btn m-x" data-close>${icon('x')}</button></div>
-      <div class="s-tabs">${['general', 'servers', 'sites', 'projects', 'about'].map((t) => `<button data-stab="${t}" class="${t === sTab ? 'on' : ''}">${t[0].toUpperCase() + t.slice(1)}</button>`).join('')}</div>
+      <div class="s-tabs">${['general', 'servers', 'sites', 'projects', 'claude', 'companion', 'about'].map((t) => `<button data-stab="${t}" class="${t === sTab ? 'on' : ''}">${t[0].toUpperCase() + t.slice(1)}</button>`).join('')}</div>
       <div class="m-body s-body" id="sBody"></div>
       <div class="m-foot"><span class="s-msg" id="sMsg"></span><button class="btn-ghost" data-close>Cancel</button><button class="btn-dark" id="sSave">${icon('check')}Save</button></div>`, 'settings');
     modal.dataset.login = login ? '1' : '';
@@ -95,11 +95,13 @@
         ${field('First name (what Cy calls you)', `<input data-p="name" value="${esc(draft.profile.name || '')}">`)}
         ${field('Full name', `<input data-p="fullName" value="${esc(draft.profile.fullName || '')}">`)}
         ${field('Role line', `<input data-p="role" value="${esc(draft.profile.role || '')}">`, 'Shown under your name, top right.')}
-        ${field('Theme', sel('theme', [['auto', 'Follow Windows'], ['light', 'Light'], ['dark', 'Dark']], SETTINGS.theme || 'auto'))}
+        ${field('Theme', sel('theme', [['auto', `Follow ${PLATFORM.name}`], ['light', 'Light'], ['dark', 'Dark']], SETTINGS.theme || 'auto'))}
         ${field('Default focus session', sel('focusMin', [[15, '15 min'], [25, '25 min'], [50, '50 min'], [90, '90 min']], SETTINGS.focusMin || 25))}
         ${field('Suggest a break after', sel('breakMin', [[45, '45 min'], [60, '1 h'], [90, '1 h 30'], [120, '2 h']], SETTINGS.breakMin || 90), 'Counts keyboard and mouse activity; 5 idle minutes reset it.')}
       </div>
-      <div class="tgls">${toggle('sing', SETTINGS.sing !== false, 'Cy sings along to music')}${toggle('breaks', SETTINGS.breaks !== false, 'Break reminders')}${toggle('login', modal.dataset.login === '1', 'Start with Windows')}</div>`;
+      <div class="tgls">${PLATFORM.canSing ? toggle('sing', SETTINGS.sing !== false, 'Cy sings along to music') : ''}${toggle('breaks', SETTINGS.breaks !== false, 'Break reminders')}${PLATFORM.canLogin ? toggle('login', modal.dataset.login === '1', `Start with ${PLATFORM.name}`) : ''}</div>
+      ${PLATFORM.canSing ? '' : `<p class="s-hint">Singing along needs ${'Windows'} (it reads the volume mixer's levels). Everything else works on ${esc(PLATFORM.name)}.</p>`}
+      ${PLATFORM.os === 'darwin' ? '<p class="s-hint">On macOS the dashboard is a window on every Space: press ⌘ ⌥ C to bring it forward.</p>' : ''}`;
     } else if (sTab === 'servers') {
       const rows = Object.entries(draft.servers).map(([id, s]) => `<div class="s-row" data-sid="${esc(id)}">
           <div><b>${esc(s.name || id)}</b><small>${esc(s.host)} · ${esc((PROBES.find((p) => p[0] === s.probe) || [0, s.probe])[1])}</small></div>
@@ -119,15 +121,47 @@
           ${g.items.map((it, ii) => `<div class="s-row"><div><input class="s-iname" data-iname="${gi}:${ii}" value="${esc(it.name)}"><small>${esc(it.repo || it.folder || (it.paths || []).join(', ') || 'no folder')}${it.session ? ' · linked to a Claude session' : ''}</small></div>
             ${sel(`status:${gi}:${ii}`, [['', '—'], ['build', 'Build'], ['testing', 'Testing'], ['beta', 'Beta'], ['live', 'Live'], ['review', 'In review']], it.stage || it.status || '')}
             <button class="btn-ghost sm" data-del-proj="${gi}:${ii}">${icon('trash-2')}</button></div>`).join('')}
-        </div>`).join('') + `<button class="btn-ghost" id="addGroup">${icon('plus')}New group</button>`;
+        </div>`).join('') + `<button class="btn-ghost" id="addGroup">${icon('plus')}New group</button>
+        <div class="s-form"><h3>Activity heatmap</h3>
+          <div class="tgls" style="margin-top:0">${toggle('act:claudeRepos', (draft.activity || {}).claudeRepos !== false, 'Also count repos I use Claude Code in')}${toggle('act:onlyMine', !!(draft.activity || {}).onlyMine, 'Only my own commits')}</div>
+          <div class="s-repos">${((draft.activity || {}).extraRepos || []).map((r, i) => `<div class="s-row"><div><b>${esc(r.split(/[\\/]/).pop())}</b><small>${esc(r)}</small></div><button class="btn-ghost sm" data-del-repo="${i}">${icon('trash-2')}</button></div>`).join('')}</div>
+          <button class="btn-ghost sm" id="addRepo" style="margin-top:0.6rem">${icon('git-branch')}Count another repo</button>
+          <p class="s-hint">Every project repo is counted. "Only my commits" matches your git user.email.</p></div>`;
+    } else if (sTab === 'claude') {
+      body.innerHTML = `<div class="empty">Checking Claude Code…</div>`;
+      window.cy.claudeStatus().then((st) => {
+        if (sTab !== 'claude') return;
+        body.innerHTML = `<div class="conn">
+          <div class="conn-row"><i class="dot ${st.installed ? 'ok' : 'bad'}"></i><div><b>Claude Code</b><small>${st.installed ? `Installed${st.version ? `, version ${esc(st.version)}` : ''}` : 'Not found on the PATH. Install it, then come back here.'}</small></div></div>
+          <div class="conn-row"><i class="dot ${st.transcripts ? 'ok' : 'warn'}"></i><div><b>Agents board and usage</b><small>Read from ${esc(st.home || '~/.claude')} on this computer. Nothing is sent anywhere.</small></div></div>
+          <div class="conn-row"><i class="dot ${st.mcp ? 'ok' : ''}"></i><div><b>CY Desk tools for Claude (MCP)</b><small>Sessions can list and add to-dos, tick them off, check your servers and log expenses.</small></div>
+            <button class="btn-${st.mcp ? 'ghost' : 'dark'} sm" id="cConnect" ${st.installed ? '' : 'disabled'}>${icon('plug-zap')}${st.mcp ? 'Reconnect' : 'Connect'}</button></div>
+          <div class="conn-row"><i class="dot ${st.claudeMd ? 'ok' : ''}"></i><div><b>Note in your CLAUDE.md</b><small>Tells every session to log only important to-dos, and never secrets.</small></div>
+            <button class="btn-ghost sm" id="cMd" data-on="${st.claudeMd ? '0' : '1'}">${st.claudeMd ? 'Remove' : 'Add'}</button></div></div>
+          <p class="s-hint" id="cMsg"></p>
+          <p class="s-hint">By hand: <code>claude mcp add --scope user cy-desk -- node &lt;cy-desk folder&gt;/mcp.js</code></p>`;
+        body.querySelectorAll('[data-icon]').forEach((i) => { i.outerHTML = icon(i.dataset.icon); });
+      });
+    } else if (sTab === 'companion') {
+      const c = SETTINGS.companion || { type: 'cy' };
+      const m = window.__model;
+      body.innerHTML = `<div class="comp">
+        <button class="comp-card ${c.type !== 'model' ? 'on' : ''}" id="compCy"><img src="mascot/g_10_3.webp" alt=""><b>Cy</b><small>The built-in plush, 182 renders, drawn face, sings along.</small></button>
+        <button class="comp-card ${c.type === 'model' ? 'on' : ''}" id="compModel"><span class="comp-ic">${icon('box')}</span><b>Your 3D model</b><small>${c.type === 'model' ? esc(c.name || 'model.glb') : 'Any .glb file: a character, a pet, a robot.'}</small></button></div>
+        ${c.type === 'model' ? `<div class="s-form"><h3>${esc(c.name || 'Your model')}</h3><div class="grid2">
+            ${field('Facing', sel('compTurn', [[0, 'As exported'], [90, 'Turn 90°'], [180, 'Turn around'], [270, 'Turn 270°']], c.turn || 0), 'If it shows its side or back, turn it here.')}
+            <div class="fld"><span>Animations found</span><small class="comp-clips">${m && m.clips ? (m.clips.length ? esc(m.clips.join(', ')) : 'None: it will turn, breathe and bob instead.') : m && m.error ? esc(m.error) : 'Loading…'}</small></div></div>
+            <div class="s-formfoot"><button class="btn-ghost sm" id="compPick" type="button">${icon('upload')}Choose another file</button></div></div>` : ''}
+        <p class="s-hint">Cy's brain stays: moods, speech, ideas, attention and singing drive your model. Clips named like idle, wave, dance, sit, sleep or cheer are played at the right moments.</p>`;
     } else {
       body.innerHTML = `<div class="about">
-        <p><b>CY Desk</b> turns the Windows desktop into a live dashboard with a companion. Everything runs on this computer.</p>
+        <p><b>CY Desk</b> turns your desktop into a live dashboard with a companion. Everything runs on this computer.</p>
         <ul>
           <li>Servers: one read-only SSH connection per server every 2 minutes, with your own key.</li>
-          <li>Claude agents: read from the session transcripts on this disk; nothing is sent anywhere.</li>
-          <li>Singing: Windows' volume-mixer levels only. Nothing is recorded.</li>
-          <li>This PC: CPU, memory, disk, battery, and input idle time for break reminders.</li>
+          <li>Claude: agents and usage are read from the session transcripts on this disk; nothing is sent anywhere.</li>
+          <li>Singing (Windows): the volume mixer's levels only. Nothing is recorded.</li>
+          <li>Health: input idle time only (was there a key or mouse event in the last minute), never what you type.</li>
+          <li>Money and health logs stay in your data folder: <code>${esc(window.__dataDir || '')}</code></li>
         </ul>
         <button class="btn-ghost" id="rerunSetup">${icon('rocket')}Run the setup wizard again</button></div>`;
     }
@@ -184,6 +218,7 @@
     if (d.stab) { sTab = d.stab; editingSrv = null; renderSettings(); return; }
     if (d.tgl) {
       const on = !b.classList.contains('on'); b.classList.toggle('on', on);
+      if (d.tgl.startsWith('act:')) { draft.activity = { ...(draft.activity || {}), [d.tgl.slice(4)]: on }; msg('Save to apply.'); return; }
       if (d.tgl === 'login') await window.cy.setLogin(on);
       else { SETTINGS = await window.cy.setSettings({ [d.tgl]: on }); if (d.tgl === 'sing') window.Buddy.setSinging(on); }
       return;
@@ -230,7 +265,39 @@
     if (d.delGroup !== undefined) { draft.groups.splice(+d.delGroup, 1); renderSettings(); return; }
     if (b.id === 'addGroup') { draft.groups.push({ id: uniqueId('group', new Set(draft.groups.map((g) => g.id))), name: 'New group', items: [] }); renderSettings(); return; }
     if (b.id === 'rerunSetup') { close(); openWizard(); return; }
+    if (b.id === 'addRepo') {
+      const f = await window.cy.pickFolder(); if (!f) return;
+      if (!f.git) { msg('That folder is not a git repository.', true); return; }
+      draft.activity = { ...(draft.activity || {}), extraRepos: [...new Set([...((draft.activity || {}).extraRepos || []), f.dir])] };
+      renderSettings(); msg('Save to apply.'); return;
+    }
+    if (d.delRepo !== undefined) { draft.activity.extraRepos.splice(+d.delRepo, 1); renderSettings(); return; }
+    if (b.id === 'cConnect') {
+      const m = $('#cMsg'); m.textContent = 'Connecting…';
+      const r = await window.cy.claudeConnect();
+      renderSettings();
+      setTimeout(() => { const m2 = $('#cMsg'); if (m2) { m2.textContent = r.ok ? 'Connected. New Claude sessions have the cy-desk tools.' : r.error; m2.style.color = r.ok ? 'var(--ok)' : 'var(--bad)'; } }, 600);
+      return;
+    }
+    if (b.id === 'cMd') { await window.cy.claudeMd(b.dataset.on === '1'); renderSettings(); return; }
+    if (b.id === 'compCy') { SETTINGS.companion = await window.cy.companionSet({ type: 'cy' }); renderSettings(); window.Buddy.say("It's me again!", 3000); return; }
+    if (b.id === 'compModel' || b.id === 'compPick') {
+      const c = SETTINGS.companion || {};
+      if (b.id === 'compModel' && c.type === 'model') return;
+      const r = await window.cy.companionPick();
+      if (!r) return;
+      if (r.error) { msg(r.error, true); return; }
+      SETTINGS.companion = await window.cy.companionSet({ type: 'model', file: r.file, name: r.name, turn: 0 });
+      renderSettings();
+      setTimeout(renderSettings, 2500); // the clip list arrives once the model has loaded
+      return;
+    }
   });
+  modal.addEventListener('change', async (e) => {
+    if (e.target.dataset.k !== 'compTurn') return;
+    e.stopImmediatePropagation();
+    SETTINGS.companion = await window.cy.companionSet({ ...SETTINGS.companion, turn: Number(e.target.value) });
+  }, true);
 
   // ------------------------------------------------------------ first-run wizard
   let wz = null;
@@ -263,7 +330,9 @@
         <ul class="wz-tips"><li>${icon('star')}Star tasks to pin them in <b>My focus</b>, press ${icon('play')} to start a focus session.</li>
         <li>${icon('bot')}The <b>Agents</b> tab shows your Claude Code sessions and which ones are waiting for you.</li>
         <li>${icon('sunrise')}Every morning Cy opens a <b>daily brief</b> with a standup you can copy.</li>
-        <li>${icon('sparkles')}Play some music: Cy sings along. Poke Cy if you're bored.</li></ul>`;
+        <li>${icon('heart-pulse')}The buttons under the projects open <b>spaces</b>: Claude, Servers, Money and Health. Cy stands up in the middle.</li>
+        <li>${icon('plug-zap')}Settings &gt; Claude connects CY Desk to Claude Code, so sessions can add your to-dos.</li>
+        <li>${icon('sparkles')}${PLATFORM.canSing ? 'Play some music: Cy sings along. ' : ''}Poke Cy if you're bored.</li></ul>`;
     }
     modal.innerHTML = `${dots}<div class="m-body wz-body">${body}</div>
       <div class="m-foot">${wz.step > 0 && wz.step < 3 ? `<button class="btn-ghost" id="wBack">Back</button>` : '<span></span>'}<span class="s-msg" id="sMsg"></span>

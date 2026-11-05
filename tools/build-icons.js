@@ -6,7 +6,12 @@ const names = ['layout-grid', 'layers', 'puzzle', 'rocket', 'list-checks', 'sear
   'external-link', 'star', 'trash-2', 'sparkles', 'triangle-alert', 'circle-check', 'activity', 'users', 'package',
   'git-commit-horizontal', 'calendar', 'clock', 'database', 'shield-check', 'hard-drive', 'mail', 'flame', 'target',
   'sunrise', 'settings', 'bot', 'cpu', 'battery', 'battery-charging', 'battery-low', 'play', 'square', 'timer', 'clipboard-copy',
-  'check', 'folder-plus', 'plug', 'coffee', 'monitor', 'hourglass', 'arrow-right', 'key-round', 'pencil', 'loader', 'circle-help', 'memory-stick'];
+  'check', 'folder-plus', 'plug', 'coffee', 'monitor', 'hourglass', 'arrow-right', 'key-round', 'pencil', 'loader', 'circle-help', 'memory-stick',
+  // v1.1: spaces (Claude, servers, money, health), project dashboards, companion
+  'wallet', 'heart-pulse', 'droplet', 'glass-water', 'smile', 'meh', 'frown', 'laugh', 'angry', 'moon-star', 'trending-up',
+  'trending-down', 'repeat', 'coins', 'minus', 'arrow-left', 'arrow-up-right', 'git-branch', 'globe', 'receipt', 'piggy-bank',
+  'chart-column', 'box', 'upload', 'eye', 'footprints', 'bed', 'utensils', 'plug-zap', 'link', 'terminal', 'circle-dot',
+  'history', 'zap', 'gauge', 'list-todo', 'wifi-off', 'lock'];
 const dir = path.join(__dirname, '..', 'node_modules', 'lucide-static', 'icons');
 const out = {};
 for (const n of names) {

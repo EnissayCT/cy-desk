@@ -451,6 +451,13 @@ if __name__ == '__main__':
             ('sing_0', dict(armL=62, armR=62, armLfwd=-48, armRfwd=-48, pitch=-4)),
             ('sing_1', dict(armL=92, armR=48, armLfwd=-30, armRfwd=-50, pitch=-6)),
             ('mic', dict(mic=True)),
+            # v1.1: pointing at a panel, thinking, dancing, holding something, a bow.
+            ('point', dict(armL=86, armLfwd=-12, yaw=12, pitch=-2)),
+            ('think', dict(armR=38, armRfwd=-100, yaw=-8, pitch=-5, roll=6)),
+            ('dance_0', dict(armL=132, armR=36, armLfwd=-10, armRfwd=-10, roll=-7, yaw=-6)),
+            ('dance_1', dict(armL=36, armR=132, armLfwd=-10, armRfwd=-10, roll=7, yaw=6)),
+            ('hold', dict(armL=34, armR=34, armLfwd=-78, armRfwd=-78, pitch=6)),
+            ('bow', dict(pitch=12, armL=14, armR=14, armLfwd=-20, armRfwd=-20)),
         ]
         only = set(ARGS[2].split(',')) if len(ARGS) > 2 else None
         for name, kw in jobs:

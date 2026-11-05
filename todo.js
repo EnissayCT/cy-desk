@@ -12,7 +12,7 @@
 const path = require('path');
 const store = require('./lib/todos');
 let config;
-try { config = require('./config.json'); } catch { console.error('No config.json yet: start CY Desk once (npm start) to create it.'); process.exit(1); }
+try { config = JSON.parse(require('fs').readFileSync(require('./lib/paths').CONFIG_FILE, 'utf8')); } catch { console.error('No config.json yet: start CY Desk once (npm start) to create it.'); process.exit(1); }
 
 const items = [];
 for (const g of config.groups) for (const i of g.items) items.push({ group: g.name, id: i.id, name: i.name });

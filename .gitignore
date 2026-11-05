@@ -16,3 +16,4 @@ tests/out/
 seed/
 mascot/mockface.py
 docs/cy-demo.gif
+dist/

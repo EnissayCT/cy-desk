@@ -6,6 +6,8 @@
 | [koffi](https://koffi.dev/) | Win32 calls (desktop pinning, window cover detection) | MIT |
 | [Geist](https://vercel.com/font) via `@fontsource-variable/geist` | interface font, bundled in `ui/fonts/` | SIL Open Font License 1.1 |
 | [Lucide](https://lucide.dev/) via `lucide-static` | icons, copied into `ui/icons.js` | ISC |
+| [three.js](https://threejs.org/) | draws a user's own `.glb` companion (`ui/model.js`) | MIT |
+| [electron-builder](https://www.electron.build/) | installers; build tool only | MIT |
 | [Blender](https://www.blender.org/) | renders Cy (`mascot/build_mascot.py`); not shipped | GPL (tool only) |
 
 Cy, the mascot, its model script and its renders are original work under this repository's MIT licence.

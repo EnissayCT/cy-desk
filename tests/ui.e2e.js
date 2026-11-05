@@ -13,6 +13,7 @@ module.exports = async (h) => {
   const has = (sel, cls) => h.js(`!!(document.querySelector(${JSON.stringify(sel)})||{classList:{contains:()=>false}}).classList.contains(${JSON.stringify(cls)})`);
   const click = (sel) => h.js(`document.querySelector(${JSON.stringify(sel)}).click()`);
   await h.wait(9000);
+  await h.js(`SETTINGS.lastBrief = dayKey(new Date()); Panels.close()`); await h.wait(300); // the morning brief opens on its own
 
   ok('icons hydrated', (await n('svg.ic')) > 10 && (await n('[data-icon]')) === 0);
   const nSrv = Math.min(4, await h.js('Object.keys(C.servers).length'));
@@ -42,21 +43,21 @@ module.exports = async (h) => {
 
   const first = await h.js('C.groups[2].items[0]');
   await click(`#plist [data-open="${first.id}"]`); await h.wait(700);
-  ok('drawer opens', await has('#drawer', 'on'));
-  ok('drawer title', (await text('#dTitle')) === first.name);
+  ok('project space opens', await h.js(`Spaces.projectId()`) === first.id);
+  ok('project title', (await text('#dTitle')) === first.name);
   // Buttons follow what the project has: a Claude session, a folder, a website.
   const want = { 'data-session': !!first.session, 'data-claude': !!(first.repo || first.folder), 'data-folder': !!(first.repo || first.folder), 'data-url': !!first.url };
   for (const [attr, expected] of Object.entries(want)) {
     ok(`button ${attr} ${expected ? 'shown' : 'hidden'}`, (await n(`#dActions [${attr}]`)) === (expected ? 1 : 0));
     if (expected) await click(`#dActions [${attr}]`);
   }
-  await h.shot(`${dir}\\v_drawer.png`);
+  await h.shot(`${dir}\\v_project.png`);
 
-  const T1 = 'ZZTEST drawer task';
+  const T1 = 'ZZTEST project task';
   await h.js(`document.querySelector('#dAddText').value = ${JSON.stringify(T1)}; document.querySelector('#dAdd').requestSubmit()`);
   await h.wait(1600);
   const id = await h.js(`(([...document.querySelectorAll('#dTodos .todo')].find(li => li.textContent.includes(${JSON.stringify(T1)}))||{}).dataset||{}).id`);
-  ok('add in drawer', !!id, id);
+  ok('add in project', !!id, id);
   await h.js(`(() => { const el = document.querySelector('[data-edit="${id}"]'); el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); el.textContent = 'ZZTEST edited'; el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); })()`);
   await h.wait(1600);
   ok('edit', (await text(`[data-edit="${id}"]`)).includes('ZZTEST edited'));
@@ -66,9 +67,9 @@ module.exports = async (h) => {
   ok('tick -> done list', (await text('#dDone')).includes('ZZTEST edited'));
   ok('Cy celebrates', (await h.js(`Buddy.state.emote`)) === 'love', await h.js(`Buddy.state.emote`));
   await click(`#dDone [data-del="${id}"]`); await h.wait(1600);
-  ok('delete', !(await text('#drawer')).includes('ZZTEST edited'));
+  ok('delete', !(await text('#spacePanel')).includes('ZZTEST edited'));
   await h.js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`); await h.wait(600);
-  ok('Esc closes drawer', !(await has('#drawer', 'on')));
+  ok('Esc closes the project', !(await h.js(`document.body.classList.contains('space')`)));
 
   const T2 = 'ZZTEST quick task';
   await h.js(`document.querySelector('#quickItem').value = C.groups[0].items[0].id; document.querySelector('#quickText').value = ${JSON.stringify(T2)}; document.querySelector('#quickAdd').requestSubmit()`);
@@ -82,7 +83,7 @@ module.exports = async (h) => {
   ok('search finds the project', (await text('#searchResults')).includes(first.name));
   await h.js(`document.querySelector('#search').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))`); await h.wait(700);
   ok('search Enter opens it', (await text('#dTitle')) === first.name);
-  await click('#dClose'); await h.wait(500);
+  await h.js(`Spaces.close()`); await h.wait(800);
 
   for (let i = 0; i < 5; i++) { await click('#mascot'); await h.wait(120); }
   await h.wait(300);
@@ -101,6 +102,7 @@ module.exports = async (h) => {
   await h.wait(400);
   ok('refresh acknowledged', (await text('#bubbleText')).includes('Checking'), await text('#bubbleText'));
   await h.wait(9000);
+  await h.js(`SETTINGS.lastBrief = dayKey(new Date()); Panels.close()`); await h.wait(300); // the morning brief opens on its own
   h.log(`${failed ? 'FAILED' : 'ALL PASSED'}: ${failed} failure(s)`);
   if (failed) process.exitCode = 1;
 };
