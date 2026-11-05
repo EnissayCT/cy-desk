@@ -28,6 +28,11 @@
   },
   "author": "Yassine Chritt",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/EnissayCT/cy-desk.git"
+  },
+  "homepage": "https://github.com/EnissayCT/cy-desk#readme",
   "keywords": [
     "electron",
     "desktop",

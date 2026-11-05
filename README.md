@@ -29,6 +29,7 @@
 Windows 10/11 and Node 20+.
 
 ```bash
+git clone https://github.com/EnissayCT/cy-desk.git && cd cy-desk
 npm install          # also builds the small native audio meter with Windows' own C# compiler
 npm run demo:app     # try it with a fictional workspace: no servers, nothing written to your data
 npm start            # the real thing: pins itself to the desktop and opens the setup wizard
