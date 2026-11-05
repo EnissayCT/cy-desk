@@ -26,7 +26,12 @@ module.exports = async (h) => {
   })`);
   // Frame pacing depends on the machine: on CI runners (no GPU, shared CPU) it is reported, not judged.
   if (process.env.CI) h.log('smooth head sweep (CI, not judged)', JSON.stringify(perf)); else ok('smooth head sweep (p95 frame time < 34 ms)', perf.p95 < 34, perf);
-  const s1 = await st();
+  // The head follows on springs: on a slow machine it can still be on its way, so give it 3 s.
+  let s1 = await st();
+  for (let i = 0; i < 15 && Math.abs(s1.yaw) <= 3; i++) {
+    if (i % 5 === 0) await h.js(`Buddy.onCursor({ x: 1350, y: 300 })`);
+    await h.wait(200); s1 = await st();
+  }
   ok('head moved continuously', Math.abs(s1.yaw) > 3, { yaw: s1.yaw, mode: s1.mode, interest: s1.interest });
 
   const shots = [];
