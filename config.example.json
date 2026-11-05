@@ -1,0 +1,55 @@
+{
+  "user": "Alex",
+  "profile": { "name": "Alex", "fullName": "Alex Martin", "role": "Full-stack developer · Northwind" },
+  "refreshMinutes": 2,
+  "gitRefreshMinutes": 10,
+  "ssh": "C:\\Program Files\\Git\\usr\\bin\\ssh.exe",
+  "servers": {
+    "api": {
+      "name": "Production API", "short": "API", "sub": "api.example.com · Ubuntu 24.04",
+      "host": "deploy@203.0.113.10", "key": "~/.ssh/id_ed25519",
+      "probe": "linux", "services": ["nginx", "postgresql", "api"], "containers": []
+    },
+    "shop": {
+      "name": "Storefront", "short": "Shop", "sub": "shop.example.com · Docker",
+      "host": "deploy@198.51.100.24", "key": "~/.ssh/id_ed25519",
+      "probe": "linux", "services": ["nginx"], "containers": ["storefront", "redis"]
+    }
+  },
+  "sites": [
+    { "id": "app", "url": "https://app.example.com/", "host": "app.example.com" },
+    { "id": "shop", "url": "https://shop.example.com/", "host": "shop.example.com" },
+    { "id": "docs", "url": "https://docs.example.com/", "host": "docs.example.com" },
+    { "id": "blog", "url": "https://blog.example.org/", "host": "blog.example.org" }
+  ],
+  "groups": [
+    {
+      "id": "client", "name": "Northwind · Platform", "servers": ["api"], "sites": ["app", "docs"],
+      "items": [
+        { "id": "billing", "name": "Billing API", "status": "live", "version": "2.4.1" },
+        { "id": "auth", "name": "Auth & SSO", "status": "live", "version": "1.9.0" },
+        { "id": "admin", "name": "Admin portal", "status": "review", "version": "0.12.0" },
+        { "id": "mobile", "name": "Mobile app", "status": "built", "version": "3.0.0-rc2" },
+        { "id": "reports", "name": "Reporting", "status": "live", "version": "1.2.3" },
+        { "id": "infra", "name": "Infrastructure", "status": "live" }
+      ]
+    },
+    {
+      "id": "shop", "name": "Storefront", "servers": ["shop"], "sites": ["shop"],
+      "items": [
+        { "id": "checkout", "name": "Checkout", "status": "live", "version": "5.1.0" },
+        { "id": "catalog", "name": "Catalog sync", "status": "live", "version": "2.0.4" },
+        { "id": "payments", "name": "Payments gateway", "status": "review", "version": "0.9.0" },
+        { "id": "emails", "name": "Transactional mail", "status": "private", "version": "1.0.0" }
+      ]
+    },
+    {
+      "id": "side", "name": "Side projects", "sites": ["blog"],
+      "items": [
+        { "id": "habit", "name": "Habit", "tagline": "Tiny habits, big streaks", "stage": "beta", "blocker": "App Store review" },
+        { "id": "recipes", "name": "Pantry", "tagline": "Recipes from what you have", "stage": "build", "blocker": "Image recognition costs" },
+        { "id": "blog", "name": "Blog", "tagline": "Notes on building things", "stage": "live", "site": "blog" }
+      ]
+    }
+  ]
+}

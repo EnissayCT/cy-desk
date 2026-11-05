@@ -1,0 +1,41 @@
+{
+  "name": "cy-desk",
+  "version": "1.0.0",
+  "description": "Your Windows desktop as a live dashboard: projects, servers, Claude agents and focus, with Cy, a plush companion that reacts to all of it.",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --windowed",
+    "demo:app": "electron . --demo",
+    "postinstall": "node tools/build-native.js",
+    "build:native": "node tools/build-native.js",
+    "build:icons": "node tools/build-icons.js",
+    "test:ui": "electron . --demo --theme=light --test=tests/ui.e2e.js",
+    "test:cy": "electron . --demo --theme=light --test=tests/cy.e2e.js",
+    "test:features": "electron . --demo --theme=light --test=tests/features.e2e.js",
+    "test": "npm run test:ui && npm run test:cy && npm run test:features",
+    "demo": "electron . --demo --theme=light --test=tools/record-demo.js && python tools/make_gif.py",
+    "test:live": "electron . --windowed --theme=light --test=tests/ui.e2e.js"
+  },
+  "devDependencies": {
+    "electron": "^33.4.11"
+  },
+  "dependencies": {
+    "@fontsource-variable/geist": "^5.3.0",
+    "koffi": "^2.16.3",
+    "lucide-static": "^1.67.0"
+  },
+  "author": "Yassine Chritt",
+  "license": "MIT",
+  "keywords": [
+    "electron",
+    "desktop",
+    "dashboard",
+    "wallpaper",
+    "mascot",
+    "developer-tools",
+    "claude",
+    "windows"
+  ]
+}

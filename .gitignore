@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+
+# Personal: your config (servers, keys paths, session ids) and everything CY Desk records
+config.json
+data/
+
+# Build outputs and big intermediate files
+native/*.exe
+mascot/frames/
+mascot/dev/
+docs/demo-frames/
+tests/out/
+*.log
+*.tmp
+seed/
+mascot/mockface.py
+docs/cy-demo.gif

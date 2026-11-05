@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'">
+  <title>CY Desk</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body data-theme="light">
+  <div class="frame">
+    <!-- sidebar -->
+    <nav class="side">
+      <div class="logo" title="CY Desk"><span>cy</span></div>
+      <div class="nav" id="nav">
+        <button class="nav-btn on" data-nav="overview" title="Overview"><i data-icon="layout-grid"></i></button>
+        <button class="nav-btn" data-nav="g1" title="Group 1"><i data-icon="layers"></i></button>
+        <button class="nav-btn" data-nav="g2" title="Group 2"><i data-icon="puzzle"></i></button>
+        <button class="nav-btn" data-nav="g3" title="Group 3"><i data-icon="rocket"></i></button>
+      </div>
+      <div class="nav nav-bottom">
+        <button class="nav-btn" id="briefBtn" title="Daily brief"><i data-icon="sunrise"></i></button>
+        <button class="nav-btn" id="settingsBtn" title="Settings"><i data-icon="settings"></i></button>
+        <button class="nav-btn" id="themeBtn" title="Light / dark"><i data-icon="moon"></i></button>
+        <button class="nav-btn" id="refresh" title="Refresh now"><i data-icon="refresh-cw"></i></button>
+      </div>
+    </nav>
+
+    <!-- top bar -->
+    <header class="top">
+      <label class="search">
+        <i data-icon="search"></i>
+        <input id="search" placeholder="Search projects, tasks…" autocomplete="off" spellcheck="false">
+        <div class="search-results" id="searchResults"></div>
+      </label>
+      <div class="pills" id="serverPills"></div>
+      <div class="top-right">
+        <button class="icon-btn" id="bell" title="Alerts"><i data-icon="bell"></i><span class="bell-n" id="bellN"></span></button>
+        <div class="me"><div class="avatar" id="meAvatar"></div><div><b id="meName"></b><span id="meRole"></span></div></div>
+      </div>
+      <div class="pop" id="alertsPop"></div>
+      <div class="pop pc-pop" id="pcPop"></div>
+    </header>
+
+    <!-- greeting + headline numbers -->
+    <section class="hero">
+      <div>
+        <h1 id="greet">Hello</h1>
+        <p id="sub">Here's your workspace at a glance.</p>
+      </div>
+      <div class="stats" id="stats"></div>
+    </section>
+
+    <!-- the three columns -->
+    <main class="grid">
+      <div class="col">
+        <section class="card health" id="health"></section>
+        <section class="card focus">
+          <div class="card-head"><div><h2>My focus</h2><p id="focusSub"></p></div>
+            <button class="btn-dark sm" id="newTask"><i data-icon="plus"></i>New task</button></div>
+          <div class="focus-banner hidden" id="focusBanner"></div>
+          <form class="quick" id="quickAdd" autocomplete="off">
+            <select id="quickItem" aria-label="Project"></select>
+            <input id="quickText" placeholder="What needs doing?" maxlength="300">
+          </form>
+          <ol class="focus-list" id="focusList"></ol>
+        </section>
+      </div>
+
+      <div class="col center">
+        <section class="card stage" id="stage">
+          <div class="stage-glow"></div>
+          <div class="bubble" id="bubble"><span id="bubbleText">Hi!</span></div>
+          <div class="mascot" id="mascot" title="Poke me">
+            <canvas id="mascotCanvas"></canvas>
+            <svg class="face" id="face" aria-hidden="true"></svg>
+            <div class="fx" id="fx"></div>
+          </div>
+          <img class="mic" id="mic" alt="">
+
+          <div class="floor"></div>
+          <div class="stage-caption" id="caption"></div>
+        </section>
+        <section class="card activity">
+          <div class="card-head"><div><h2>Activity</h2><p id="activitySub"></p></div>
+            <div class="legend"><span>Less</span><i class="c0"></i><i class="c1"></i><i class="c2"></i><i class="c3"></i><i class="c4"></i><span>More</span></div></div>
+          <div class="heat" id="heat"></div>
+        </section>
+      </div>
+
+      <div class="col">
+        <section class="card projects">
+          <div class="card-head"><div><h2>Projects</h2><p id="projSub"></p></div></div>
+          <div class="seg" id="tabs"></div>
+          <div class="plist" id="plist"></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div class="scrim" id="scrim"></div>
+  <aside class="drawer" id="drawer" aria-hidden="true">
+    <div class="drawer-inner">
+      <header class="d-head">
+        <div>
+          <div class="d-group" id="dGroup"></div>
+          <h1 id="dTitle"></h1>
+          <div class="d-sub" id="dSub"></div>
+        </div>
+        <button class="icon-btn" id="dClose" title="Close (Esc)"><i data-icon="x"></i></button>
+      </header>
+      <div class="d-actions" id="dActions"></div>
+      <div class="d-chips" id="dChips"></div>
+      <section class="d-sec">
+        <h3>To-do <span id="dCount"></span></h3>
+        <ul class="todo-list" id="dTodos"></ul>
+        <form id="dAdd" autocomplete="off"><input id="dAddText" placeholder="Add a task to this project…" maxlength="300"></form>
+      </section>
+      <section class="d-sec" id="dDoneSec">
+        <h3>Done recently</h3>
+        <ul class="todo-list done" id="dDone"></ul>
+      </section>
+      <section class="d-sec" id="dCommitsSec">
+        <h3>Recent commits</h3>
+        <ul class="commits" id="dCommits"></ul>
+      </section>
+    </div>
+  </aside>
+
+  <div class="modal-scrim" id="modalScrim"></div>
+  <section class="modal" id="modal" role="dialog" aria-modal="true"></section>
+
+  <script src="icons.js"></script>
+  <script src="mascot/anchors.js"></script>
+  <script src="mascot.js"></script>
+  <script src="app.js"></script>
+  <script src="panels.js"></script>
+</body>
+</html>
