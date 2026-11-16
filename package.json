@@ -1,7 +1,7 @@
 {
   "name": "cy-desk",
   "productName": "CY Desk",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Your desktop as a live dashboard: projects, servers, Claude Code agents, money and health, with Cy, a plush companion that reacts to all of it.",
   "main": "main.js",
   "private": true,
@@ -16,8 +16,11 @@
     "test:cy": "electron . --demo --theme=light --test=tests/cy.e2e.js",
     "test:features": "electron . --demo --theme=light --test=tests/features.e2e.js",
     "test:spaces": "electron . --demo --theme=light --test=tests/spaces.e2e.js",
-    "test": "npm run test:ui && npm run test:cy && npm run test:features && npm run test:spaces",
+    "test:life": "electron . --demo --theme=light --test=tests/life.e2e.js",
+    "test:brain": "node tests/brain.test.js",
+    "test": "npm run test:brain && npm run test:ui && npm run test:cy && npm run test:features && npm run test:spaces && npm run test:life",
     "test:live": "electron . --windowed --theme=light --test=tests/ui.e2e.js",
+    "test:perf": "electron . --demo --size=1536x960 --theme=light --test=tests/perf.e2e.js",
     "demo": "electron . --demo --theme=light --test=tools/record-demo.js && python tools/make_gif.py",
     "dist": "electron-builder --publish never",
     "dist:dir": "electron-builder --dir --publish never"
@@ -29,23 +32,60 @@
     "lucide-static": "^1.67.0"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.9.0",
     "koffi": "^2.16.3",
     "three": "0.170.0"
   },
   "build": {
     "appId": "io.github.enissayct.cydesk",
     "productName": "CY Desk",
-    "directories": { "output": "dist" },
+    "directories": {
+      "output": "dist"
+    },
     "files": [
-      "main.js", "preload.js", "mcp.js", "todo.js", "package.json", "config.example.json",
-      "lib/**", "ui/**", "native/audiometer.cs", "native/audiometer.exe",
-      "!**/*.map", "!node_modules/three/examples/!(jsm)/**", "!node_modules/three/src/**"
+      "main.js",
+      "preload.js",
+      "mcp.js",
+      "todo.js",
+      "package.json",
+      "config.example.json",
+      "lib/**",
+      "ui/**",
+      "native/audiometer.cs",
+      "native/audiometer.exe",
+      "!**/*.map",
+      "!node_modules/three/examples/!(jsm)/**",
+      "!node_modules/three/src/**"
     ],
-    "asarUnpack": ["mcp.js", "todo.js", "package.json", "lib/**", "native/audiometer.exe"],
-    "win": { "target": ["nsis"], "signAndEditExecutable": false },
-    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true },
-    "mac": { "target": ["dmg"], "category": "public.app-category.productivity" },
-    "linux": { "target": ["AppImage"], "category": "Utility" }
+    "asarUnpack": [
+      "mcp.js",
+      "todo.js",
+      "package.json",
+      "lib/**",
+      "native/audiometer.exe"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.productivity"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Utility"
+    }
   },
   "author": "Yassine Chritt",
   "license": "MIT",
@@ -54,5 +94,18 @@
     "url": "git+https://github.com/EnissayCT/cy-desk.git"
   },
   "homepage": "https://github.com/EnissayCT/cy-desk#readme",
-  "keywords": ["electron", "desktop", "dashboard", "wallpaper", "mascot", "developer-tools", "claude", "claude-code", "mcp", "windows", "macos", "linux"]
+  "keywords": [
+    "electron",
+    "desktop",
+    "dashboard",
+    "wallpaper",
+    "mascot",
+    "developer-tools",
+    "claude",
+    "claude-code",
+    "mcp",
+    "windows",
+    "macos",
+    "linux"
+  ]
 }

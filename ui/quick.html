@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'">
+  <title>CY Desk · quick add</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="quick-body">
+  <form class="quick-win" id="qForm" autocomplete="off">
+    <div class="q-top"><span class="q-logo">cy</span><b>Add a task</b><span class="q-hint">Enter to add · Esc to close · Ctrl+Alt+N from anywhere</span></div>
+    <div class="q-row">
+      <select id="qItem" aria-label="Project"></select>
+      <input id="qText" placeholder="What needs doing?" maxlength="300">
+    </div>
+    <label class="q-pin"><input type="checkbox" id="qPin" checked> Pin to today's focus</label>
+  </form>
+  <script src="quick.js"></script>
+</body>
+</html>

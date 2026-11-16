@@ -17,7 +17,7 @@ module.exports = async (h) => {
 
   ok('icons hydrated', (await n('svg.ic')) > 10 && (await n('[data-icon]')) === 0);
   const nSrv = Math.min(4, await h.js('Object.keys(C.servers).length'));
-  ok('server pills (+ this PC)', (await n('#serverPills .pill-srv')) === nSrv + 1, nSrv);
+  ok('server pills (+ this PC)', (await n('#serverPills .pill-srv:not(.pill-wx)')) === nSrv + 1, nSrv);
   ok('health rows', (await n('#health .srv-row')) === nSrv);
   ok('gauge ticks', (await n('#health .gauge line')) === 34);
   ok('hero stats', (await n('#stats .stat')) === 4);

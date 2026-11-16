@@ -77,7 +77,7 @@
     draft.profile = draft.profile || { name: USER, fullName: USER, role: '' };
     const login = await window.cy.getLogin();
     open(`<div class="m-head"><div class="m-ic">${icon('settings')}</div><div><h2>Settings</h2><p>CY Desk ${esc(window.__version || '')}</p></div><button class="icon-btn m-x" data-close>${icon('x')}</button></div>
-      <div class="s-tabs">${['general', 'servers', 'sites', 'projects', 'claude', 'companion', 'about'].map((t) => `<button data-stab="${t}" class="${t === sTab ? 'on' : ''}">${t[0].toUpperCase() + t.slice(1)}</button>`).join('')}</div>
+      <div class="s-tabs">${['general', 'cy', 'servers', 'sites', 'projects', 'widgets', 'claude', 'companion', 'about'].map((t) => `<button data-stab="${t}" class="${t === sTab ? 'on' : ''}">${t[0].toUpperCase() + t.slice(1)}</button>`).join('')}</div>
       <div class="m-body s-body" id="sBody"></div>
       <div class="m-foot"><span class="s-msg" id="sMsg"></span><button class="btn-ghost" data-close>Cancel</button><button class="btn-dark" id="sSave">${icon('check')}Save</button></div>`, 'settings');
     modal.dataset.login = login ? '1' : '';
@@ -99,8 +99,9 @@
         ${field('Default focus session', sel('focusMin', [[15, '15 min'], [25, '25 min'], [50, '50 min'], [90, '90 min']], SETTINGS.focusMin || 25))}
         ${field('Suggest a break after', sel('breakMin', [[45, '45 min'], [60, '1 h'], [90, '1 h 30'], [120, '2 h']], SETTINGS.breakMin || 90), 'Counts keyboard and mouse activity; 5 idle minutes reset it.')}
       </div>
-      <div class="tgls">${PLATFORM.canSing ? toggle('sing', SETTINGS.sing !== false, 'Cy sings along to music') : ''}${toggle('breaks', SETTINGS.breaks !== false, 'Break reminders')}${PLATFORM.canLogin ? toggle('login', modal.dataset.login === '1', `Start with ${PLATFORM.name}`) : ''}</div>
+      <div class="tgls">${PLATFORM.canSing ? toggle('sing', SETTINGS.sing !== false, 'Cy sings along to music') : ''}${toggle('breaks', SETTINGS.breaks !== false, 'Break reminders')}${toggle('gpu', !!SETTINGS.gpu, 'Smooth animations (graphics card)')}${PLATFORM.canLogin ? toggle('login', modal.dataset.login === '1', `Start with ${PLATFORM.name}`) : ''}</div>
       ${PLATFORM.canSing ? '' : `<p class="s-hint">Singing along needs ${'Windows'} (it reads the volume mixer's levels). Everything else works on ${esc(PLATFORM.name)}.</p>`}
+      <p class="s-hint">Smooth animations use the graphics card: 60 fps instead of about 40. CY Desk restarts to switch. If you see flickering blocks on the desktop, turn it off again (also in the tray menu).</p>
       ${PLATFORM.os === 'darwin' ? '<p class="s-hint">On macOS the dashboard is a window on every Space: press ⌘ ⌥ C to bring it forward.</p>' : ''}`;
     } else if (sTab === 'servers') {
       const rows = Object.entries(draft.servers).map(([id, s]) => `<div class="s-row" data-sid="${esc(id)}">
@@ -142,6 +143,31 @@
           <p class="s-hint">By hand: <code>claude mcp add --scope user cy-desk -- node &lt;cy-desk folder&gt;/mcp.js</code></p>`;
         body.querySelectorAll('[data-icon]').forEach((i) => { i.outerHTML = icon(i.dataset.icon); });
       });
+    } else if (sTab === 'cy') {
+      const x = window.CyLife && window.CyLife.xp;
+      const models = (window.__models || []).length ? window.__models : [['claude-haiku-5-5', 'Haiku 5.5 · fastest, cheapest']];
+      body.innerHTML = `<div class="grid2">
+        ${field('Claude API key', `<div class="row-in"><input id="cyKey" type="password" placeholder="${window.__hasKey ? 'Saved (encrypted on this computer)' : 'sk-ant-…'}" autocomplete="off"><button class="btn-dark sm" id="cyKeySave" type="button">${icon('check')}Save</button>${window.__hasKey ? `<button class="btn-ghost sm" id="cyKeyClear" type="button">${icon('trash-2')}</button>` : ''}</div>`,
+          'Cy talks through the Claude API with your key. It is checked, then stored encrypted by the system; it never leaves this computer except to call Anthropic.')}
+        ${field('Cy talks with', sel('chatModel', models, SETTINGS.chatModel || 'claude-haiku-5-5'), 'Haiku is fast and cheap: it reads the dashboard and chats. Sonnet and Opus think harder and cost more.')}
+        ${field('Weather for', `<input data-k="weatherPlace" id="cyPlace" value="${esc(SETTINGS.weatherPlace || '')}" placeholder="City, Country">`, 'Haiku looks it up with one web search every 3 hours while you are at the computer (about a cent each).')}
+        <div class="fld"><span>Cy's level</span><small class="comp-clips">${x ? `Level ${x.level} · ${x.xp} XP in total · ${x.items.filter((i) => i.unlocked && !i.builtin).length} of ${x.items.filter((i) => !i.builtin).length} outfits unlocked` : '—'}</small></div>
+      </div>
+      <div class="tgls">${toggle('weatherOn', SETTINGS.weatherOn !== false, 'Weather on the desk')}</div>
+      <p class="s-hint" id="cyMsg"></p>
+      <p class="s-hint">Talk to Cy from the box on the stage, or with Ctrl+K and a question ending in “?”. When you do, your message and a summary of the dashboard (task names, server and site states, Claude session titles, today's health and this month's spending total) go to Anthropic's API so Cy can answer. Nothing is sent otherwise.</p>`;
+    } else if (sTab === 'widgets') {
+      const list = draft.widgets || [];
+      body.innerHTML = `${list.map((w, i) => `<div class="s-row"><div><b>${esc(w.title)}</b><small>${esc(w.source === 'command' ? `$ ${w.command}` : w.url)}${w.path ? ` → ${esc(w.path)}` : ''} · every ${esc(String(w.every || 5))} min</small></div>
+          <button class="btn-ghost sm" data-del-widget="${i}">${icon('trash-2')}</button></div>`).join('') || '<div class="empty">No widgets yet.</div>'}
+        <div class="s-form"><h3>Add a widget</h3><div class="grid2">
+          ${field('Title', '<input id="wgTitle" placeholder="GitHub stars">')}
+          ${field('Source', '<select id="wgSource"><option value="url">A URL (JSON or text)</option><option value="command">A command on this computer</option></select>')}
+          ${field('URL or command', '<input id="wgWhat" placeholder="https://api.github.com/repos/owner/repo">')}
+          ${field('Value at (JSON path)', '<input id="wgPath" placeholder="stargazers_count">', 'Leave empty for plain text or a number.')}
+          ${field('Unit (optional)', '<input id="wgUnit" placeholder="stars">')}
+          ${field('Refresh every', '<select id="wgEvery"><option value="1">1 min</option><option value="5" selected>5 min</option><option value="15">15 min</option><option value="60">1 h</option></select>')}
+        </div><div class="s-formfoot"><span class="s-test" id="wgOut"></span><button class="btn-dark sm" id="wgAdd" type="button">${icon('plus')}Add widget</button></div></div>`;
     } else if (sTab === 'companion') {
       const c = SETTINGS.companion || { type: 'cy' };
       const m = window.__model;
@@ -280,6 +306,25 @@
       return;
     }
     if (b.id === 'cMd') { await window.cy.claudeMd(b.dataset.on === '1'); renderSettings(); return; }
+    if (b.id === 'cyKeySave') {
+      const m = $('#cyMsg'); m.textContent = 'Checking the key with a tiny request…'; m.style.color = '';
+      const r = await window.cy.setKey($('#cyKey').value);
+      if (r.ok) { window.__hasKey = true; window.CyLife && window.CyLife.setHasKey(true); renderSettings(); setTimeout(() => { const m2 = $('#cyMsg'); if (m2) { m2.textContent = 'Saved. Say hi to Cy!'; m2.style.color = 'var(--ok)'; } }, 50); window.Buddy.celebrate('I can talk now!'); }
+      else { m.textContent = r.error; m.style.color = 'var(--bad)'; }
+      return;
+    }
+    if (b.id === 'cyKeyClear') { const r = await window.cy.clearKey(); window.__hasKey = !!r.hasKey; window.CyLife && window.CyLife.setHasKey(window.__hasKey); renderSettings(); return; }
+    if (b.id === 'wgAdd') {
+      const title = $('#wgTitle').value.trim(), source = $('#wgSource').value, what = $('#wgWhat').value.trim();
+      const out = $('#wgOut');
+      if (!title || !what) { out.textContent = 'Give it a title and a URL or command.'; out.className = 's-test bad'; return; }
+      if (source === 'url' && !/^https?:\/\//.test(what)) { out.textContent = 'A URL starts with http:// or https://'; out.className = 's-test bad'; return; }
+      draft.widgets = draft.widgets || [];
+      const id = uniqueId(title, new Set(draft.widgets.map((w) => w.id)));
+      draft.widgets.push({ id, title, source, [source === 'url' ? 'url' : 'command']: what, path: $('#wgPath').value.trim(), unit: $('#wgUnit').value.trim(), every: Number($('#wgEvery').value) });
+      renderSettings(); msg('Widget added. Save to apply.'); return;
+    }
+    if (d.delWidget !== undefined) { draft.widgets.splice(+d.delWidget, 1); renderSettings(); return; }
     if (b.id === 'compCy') { SETTINGS.companion = await window.cy.companionSet({ type: 'cy' }); renderSettings(); window.Buddy.say("It's me again!", 3000); return; }
     if (b.id === 'compModel' || b.id === 'compPick') {
       const c = SETTINGS.companion || {};

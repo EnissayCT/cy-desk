@@ -40,35 +40,98 @@
     servers: () => 'Here is everything I keep an eye on.',
     money: () => pick(['Let us look at the money.', 'Wallet time. No judging.', 'Counting coins with you.']),
     health: () => pick(['How are you doing, really?', 'Body check. Water, breaks, mood.', 'You matter more than the servers.']),
-    project: (id) => { const it = items.get(id); return it ? `${it.item.name}. Let us see how it is going.` : ''; }
+    project: (id) => { const it = items.get(id); return it ? `${it.item.name}. Let us see how it is going.` : ''; },
+    widgets: () => ((C.widgets || []).length || window.__demo ? 'Your numbers, from wherever they live.' : 'Add a widget in Settings: any URL or command.')
   };
+  // ---------------------------------------------------------------- the transition
+  // This window renders in software, where the compositor's slow paths are scaling a big layer
+  // and repainting. So the layout switches once and only cheap things move: the old card fades out
+  // as a copy while the new one fades in (a crossfade reads as the card growing), Cy's small
+  // layers glide and grow (translate/scale), columns and panels fade and slide. All of it runs as
+  // compositor animations, and Cy holds its frame meanwhile.
+  const FLIP_MS = 520, EASE = 'cubic-bezier(0.22, 0.8, 0.24, 1)';
+  let flipEnd = 0, unflip = null, running = [], ghost = null;
+  function flip(change) {
+    const grid = document.querySelector('.grid'), stage = $('#stage'), bg = $('#stageBg'), act = $('#activityCard'), cyEl = $('#mascot');
+    const parts = [cyEl, $('#mic'), document.querySelector('.stage-glow'), document.querySelector('.floor')];
+    running.forEach((a) => a.cancel()); running = [];
+    if (ghost) { ghost.remove(); ghost = null; }
+    clearTimeout(unflip);
+    body.classList.add('flipping');
+    window.Buddy.freeze(true);
+    const r0 = stage.getBoundingClientRect(), c0 = cyEl.getBoundingClientRect(), a0 = act.getBoundingClientRect();
+    // A copy of the card where it was, between the new card and Cy (inside the stage, under its content).
+    ghost = document.createElement('div');
+    ghost.className = 'stage-ghost' + (body.classList.contains('space') ? ' big' : '');
+    change();
+    const rs = stage.getBoundingClientRect();
+    Object.assign(ghost.style, { left: `${r0.left - rs.left}px`, top: `${r0.top - rs.top}px`, width: `${r0.width}px`, height: `${r0.height}px` });
+    bg.after(ghost);
+    const c1 = cyEl.getBoundingClientRect(), a1 = act.getBoundingClientRect();
+    // The activity card leaves the column flow when the stage goes over the grid: hold it where it was while it fades.
+    act.style.transform = body.classList.contains('space') ? `translate(${a0.left - a1.left}px, ${a0.top - a1.top}px)` : '';
+    const opts = { duration: FLIP_MS, easing: EASE };
+    const dx = c0.left + c0.width / 2 - (c1.left + c1.width / 2), dy = c0.bottom - c1.bottom, k = c1.width ? c0.width / c1.width : 1;
+    // Hold the first pose while the new layers rasterize (two frames), then move: a motion that
+    // starts on a frame busy rasterizing would open with a jump.
+    const opening = body.classList.contains('space'), r1 = stage.getBoundingClientRect();
+    const hold = opening ? [bg.animate([{ opacity: 0 }, { opacity: 0 }], { duration: 1e6 })] : [];
+    for (const el of parts) if (el) hold.push(el.animate([{ translate: `${dx}px ${dy}px`, scale: `${k}` }, { translate: `${dx}px ${dy}px`, scale: `${k}` }], { duration: 1e6 }));
+    running = hold;
+    const mine = running;
+    flipEnd = Date.now() + FLIP_MS + 50;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (running !== mine) return;
+      hold.forEach((a) => a.cancel());
+      running = [];
+      if (opening) {
+        // The big card fades in over the columns while the small one (a copy above) fades away.
+        running.push(bg.animate([{ opacity: 0 }, { opacity: 1 }], { duration: FLIP_MS * 0.7, easing: 'ease-out' }));
+        running.push(ghost.animate([{ opacity: 1 }, { opacity: 0 }], { duration: FLIP_MS * 0.65, easing: 'ease-in', fill: 'forwards' }));
+      } else {
+        // The big card (a copy, opaque, painted once) shrinks into the small one, then melts into it.
+        // Scaling down only ever draws fewer pixels, so this stays cheap in software.
+        const to = `translate(${r1.left - r0.left}px, ${r1.top - r0.top}px) scale(${r1.width / r0.width}, ${r1.height / r0.height})`;
+        running.push(ghost.animate([{ transformOrigin: '0 0', transform: 'none', opacity: 1 }, { transformOrigin: '0 0', transform: to, opacity: 1, offset: 0.8 }, { transformOrigin: '0 0', transform: to, opacity: 0 }], { ...opts, fill: 'forwards' }));
+      }
+      for (const el of parts) if (el) running.push(el.animate([{ translate: `${dx}px ${dy}px`, scale: `${k}` }, { translate: '0px 0px', scale: '1' }], opts));
+      const now = running;
+      running[running.length - 1].onfinish = () => { if (running === now) finish(); };
+    }));
+    const finish = () => {
+      running = [];
+      if (ghost) { ghost.remove(); ghost = null; }
+      unflip = setTimeout(() => body.classList.remove('flipping'), 340);
+      window.Buddy.freeze(false);
+      window.Buddy.relayout();
+    };
+  }
+
   function open(name, id = null) {
     if (name === 'project' && !items.has(id)) return;
     const was = cur;
     cur = { name, id };
     if (name !== 'project') { try { localStorage.setItem('cy.space', name); } catch {} }
-    body.classList.add('space');
-    body.dataset.openSpace = name;
     document.querySelectorAll('.nav-btn[data-space]').forEach((b) => b.classList.toggle('on', b.dataset.space === name));
     document.querySelectorAll('[data-nav="overview"]').forEach((b) => b.classList.remove('on'));
     $('#spacePanel').setAttribute('aria-hidden', 'false');
     hideTip();
     render(true);
+    const apply = () => { body.classList.add('space'); body.dataset.openSpace = name; };
+    if (was) apply(); else flip(apply);
     load(name);
     window.Buddy.setSpace(name, LINES[name] ? LINES[name](id) : '');
-    if (!was) setTimeout(() => window.Buddy.relayout(), 700);
   }
   function close() {
     if (!cur) return;
     cur = null;
-    body.classList.remove('space');
-    delete body.dataset.openSpace;
     $('#spacePanel').setAttribute('aria-hidden', 'true');
     document.querySelectorAll('.nav-btn[data-space]').forEach((b) => b.classList.remove('on'));
     document.querySelectorAll('[data-nav="overview"]').forEach((b) => b.classList.add('on'));
     hideTip();
+    flip(() => { body.classList.remove('space'); delete body.dataset.openSpace; });
     window.Buddy.setSpace(null);
-    setTimeout(() => { L.innerHTML = ''; R.innerHTML = ''; window.Buddy.relayout(); }, 650);
+    setTimeout(() => { if (!cur) { L.innerHTML = ''; R.innerHTML = ''; } }, 650);
   }
   const toggle = (name) => (cur && cur.name === name ? close() : open(name));
 
@@ -79,7 +142,9 @@
     } else if (name === 'money') money = await window.cy.ledger();
     else if (name === 'health') healthData = await window.cy.health();
     else return;
-    if (cur && cur.name === name) render(false);
+    // Data that arrives mid-transition waits for it to end (a re-render would cost a frame).
+    const wait = Math.max(0, flipEnd - Date.now());
+    setTimeout(() => { if (cur && cur.name === name) render(false); }, wait);
   }
 
   function render(entering) {
@@ -87,7 +152,7 @@
     // Don't redraw under someone typing in a form.
     const active = document.activeElement;
     if (!entering && active && $('#spacePanel').contains(active) && /INPUT|SELECT|TEXTAREA/.test(active.tagName)) return;
-    const f = { claude: claudeSpace, servers: serversSpace, money: moneySpace, health: healthSpace, project: projectSpace }[cur.name];
+    const f = { claude: claudeSpace, servers: serversSpace, money: moneySpace, health: healthSpace, project: projectSpace, widgets: widgetsSpace }[cur.name];
     const [left, right] = f(cur.id);
     const keepL = L.scrollTop, keepR = R.scrollTop;
     L.innerHTML = left; R.innerHTML = right;
@@ -260,6 +325,29 @@
     return [left, right];
   }
 
+  // ---------------------------------------------------------------- custom widgets
+  function widgetsSpace() {
+    const st = (window.CyLife && window.CyLife.widgets) || {};
+    const defs = C.widgets || [];
+    const okN = defs.filter((w) => st[w.id] && st[w.id].ok).length;
+    const cardOf = (w) => {
+      const s = st[w.id];
+      const value = !s ? '…' : s.value !== null && s.value !== undefined ? fmtN(Math.round(s.value * 100) / 100) : s.text || '—';
+      return card(esc(w.title), `<div class="wd-val"><b>${esc(String(value))}</b>${w.unit ? `<span>${esc(w.unit)}</span>` : ''}</div>
+        ${s && s.history && s.history.length > 1 ? spark(s.history) : ''}
+        <small class="sp-note">${esc(w.source === 'command' ? `$ ${w.command}` : w.url || '')}${w.path ? ` → ${esc(w.path)}` : ''}</small>
+        ${s && !s.ok ? `<div class="a-row"><i class="dot bad"></i><div>${esc(s.error || 'failed')}</div></div>` : ''}`,
+        `<span class="sp-note wd-at">${s ? esc(ago(s.at)) : 'loading'}</span>`);
+    };
+    const left = head('gauge', 'Widgets', `${defs.length} widget${defs.length === 1 ? '' : 's'} · ${okN} up to date`) +
+      `<div class="sp-kpis">${kpi(fmtN(defs.length), 'Widgets', 'gauge')}${kpi(fmtN(okN), 'Answering', 'circle-check')}${kpi(fmtN(defs.length - okN), 'Failing or loading', 'triangle-alert', defs.length - okN ? 'hot' : '')}${kpi(defs.length ? `${Math.min(...defs.map((w) => Number(w.every) || 5))} min` : '—', 'Fastest refresh', 'refresh-cw')}</div>` +
+      defs.filter((_, i) => i % 2 === 0).map(cardOf).join('') +
+      card('Add your own', `<p class="sp-note" style="margin-top:0">Any number or short text from a URL (JSON or plain text) or a command on this computer: stars on a repo, open issues, a queue length, a price, a script's output. Settings › Widgets.</p>
+        <button class="btn-dark sm" data-act="widgets:settings">${icon('plus')}Add a widget</button>`);
+    const right = `<div class="sp-tools">${closeBtn}</div>` + (defs.filter((_, i) => i % 2 === 1).map(cardOf).join('') || '');
+    return [left, right];
+  }
+
   // ---------------------------------------------------------------- a project
   let projectId = null;
   function projectSpace(id) {
@@ -320,6 +408,7 @@
   // ---------------------------------------------------------------- actions
   async function act(a, el) {
     if (a === 'close') return close();
+    if (a === 'widgets:settings') { window.Panels.openSettings('widgets'); return; }
     if (a === 'refresh') { window.cy.refresh(); window.Buddy.say('Checking everything…', 3000); return; }
     if (a.startsWith('agents:')) { agentFilter = a.slice(7); render(false); return; }
     if (a === 'claude:new') { const dir = $('#spNewDir').value; await window.cy.openClaude(dir); window.Buddy.say('New session coming up.', 3500); return; }

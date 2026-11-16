@@ -54,9 +54,9 @@ module.exports = async (h) => {
 
   // settings
   await click('#settingsBtn'); await h.wait(700);
-  ok('settings open', await has('#modal', 'on') && (await n('#modal .s-tabs button')) === 7);
+  ok('settings open', await has('#modal', 'on') && (await n('#modal .s-tabs button')) === 9);
   await h.shot(path.join(dir, 'settings-general.png'));
-  for (const t of ['servers', 'sites', 'projects', 'claude', 'companion', 'about']) {
+  for (const t of ['cy', 'servers', 'sites', 'projects', 'widgets', 'claude', 'companion', 'about']) {
     await click(`[data-stab="${t}"]`); await h.wait(300);
     ok(`settings tab ${t}`, (await n('#sBody > *')) > 0);
     if (t === 'servers') {

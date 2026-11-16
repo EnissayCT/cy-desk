@@ -169,7 +169,7 @@ function serverMetric(id) {
 // ---------- rendering ----------
 function renderTop(alerts) {
   const pill = (id) => { const st = serverState(id, alerts); const def = C.servers[id]; return `<div class="pill-srv" title="${esc(def.sub || st.label)}"><i class="dot ${st.cls}"></i>${esc(def.short || def.name)}<span>${esc(serverMetric(id).pill)}</span></div>`; };
-  $('#serverPills').innerHTML = Object.keys(C.servers).slice(0, 4).map(pill).join('') + pcPill();
+  $('#serverPills').innerHTML = Object.keys(C.servers).slice(0, 4).map(pill).join('') + pcPill() + (window.CyLife ? window.CyLife.weatherPill() : '');
   const n = $('#bellN');
   n.textContent = alerts.length || '';
   n.className = `bell-n${alerts.length ? ' on' : ''}${alerts.length && !alerts.some((a) => a.level === 'bad') ? ' warn' : ''}`;
@@ -716,6 +716,9 @@ function setTheme(th) {
   AGENTS = init.agents || []; VITALS = init.vitals; FOCUS = init.focus; FOCUS_WEEK = init.focusWeek || FOCUS_WEEK; SETTINGS = init.settings || {};
   PLATFORM = init.platform || PLATFORM;
   window.__dataDir = init.dataDir || '';
+  window.__hasKey = !!init.hasKey; window.__models = init.models || [];
+  window.__init = init;
+  if (window.CyLife) window.CyLife.init(init);
   document.body.dataset.os = PLATFORM.os;
   window.__companion = SETTINGS.companion;
   if (window.Companion) window.Companion.apply(SETTINGS.companion);

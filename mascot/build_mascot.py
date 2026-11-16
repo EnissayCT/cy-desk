@@ -298,6 +298,7 @@ def build():
         add_fur(foot, ng, fur, density=2600, length=0.06, mess=0.035)
         feet[side] = foot
     character = [o for o in sc.objects if o.type in ('MESH', 'CURVES')]
+    props = build_props(sc, body_piv)
     mic = build_mic(sc)
 
     # Face anchors: points on the head surface the dashboard draws the face at.
@@ -332,7 +333,60 @@ def build():
     c = cam.constraints.new('TRACK_TO'); c.target = tgt; c.track_axis = 'TRACK_NEGATIVE_Z'; c.up_axis = 'UP_Y'
     sc.camera = cam
     return sc, {'rig': rig, 'body': body_piv, 'head': head_piv, 'arms': arms, 'feet': feet, 'anchors': anchors, 'cam': cam,
-                'character': character, 'mic': mic}
+                'character': character, 'mic': mic, 'props': props}
+
+
+def build_props(sc, body_piv):
+    """v1.2 props, rendered with Cy in their poses: a small laptop on the lap (Cy at work while a
+    Claude session runs) and a blank sign held in front (a session waiting for you; the page writes
+    the text on it, using the board corners exported per pose)."""
+    def mat(name, color, metal, rough, emit=None):
+        m = bpy.data.materials.new(name); m.use_nodes = True
+        p = m.node_tree.nodes['Principled BSDF']
+        p.inputs['Base Color'].default_value = color
+        p.inputs['Metallic'].default_value = metal
+        p.inputs['Roughness'].default_value = rough
+        if emit:
+            p.inputs['Emission Color'].default_value = emit[0]
+            p.inputs['Emission Strength'].default_value = emit[1]
+        return m
+    alu = mat('Aluminium', (0.72, 0.72, 0.74, 1), 0.9, 0.32)
+    dark = mat('Bezel', (0.03, 0.03, 0.035, 1), 0.1, 0.4)
+    logo = mat('Logo', (1.0, 0.7, 0.18, 1), 0.0, 0.4, ((1.0, 0.68, 0.16, 1), 3.0))
+    paper = mat('Card', (0.97, 0.95, 0.9, 1), 0.0, 0.75)
+    kraft = mat('Kraft', (0.62, 0.44, 0.26, 1), 0.0, 0.8)
+
+    def box(name, size, loc, rot=(0, 0, 0), m=None, parent=None):
+        bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, 0))
+        o = bpy.context.active_object; o.name = name; o.scale = size
+        bev = o.modifiers.new('Bevel', 'BEVEL'); bev.width = min(size) * 0.45; bev.segments = 4
+        o.data.materials.append(m)
+        o.parent = parent; o.location = loc; o.rotation_euler = rot
+        return o
+    # Laptop: base on the lap, lid open toward Cy (the camera sees its back and the glowing logo).
+    lap = bpy.data.objects.new('LaptopPivot', None); sc.collection.objects.link(lap)
+    lap.parent = body_piv; lap.location = (0, -1.22, 0.3)
+    base = box('LaptopBase', (0.9, 0.58, 0.045), (0, 0, 0), m=alu, parent=lap)
+    hinge = bpy.data.objects.new('LaptopHinge', None); sc.collection.objects.link(hinge)
+    hinge.parent = lap; hinge.location = (0, -0.27, 0.025); hinge.rotation_euler = (math.radians(14), 0, 0)  # far edge, leaning away from Cy
+    lid = box('LaptopLid', (0.9, 0.035, 0.6), (0, 0, 0.3), m=alu, parent=hinge)
+    bezel = box('LaptopScreen', (0.84, 0.01, 0.54), (0, 0.02, 0.3), m=dark, parent=hinge)
+    dot = ellipsoid('LaptopLogo', (0, 0, 0), (0.05, 0.01, 0.05), 24, 12)
+    dot.data.materials.append(logo); dot.parent = hinge; dot.location = (0, -0.022, 0.33)
+    laptop = [base, lid, bezel, dot]
+    # Sign: a cream card with a kraft border, held in front of the chest.
+    sg = bpy.data.objects.new('SignPivot', None); sc.collection.objects.link(sg)
+    sg.parent = body_piv; sg.location = (0, -0.98, 0.98); sg.rotation_euler = (math.radians(-6), 0, 0)
+    border = box('SignBorder', (1.62, 0.04, 0.92), (0, 0.012, 0), m=kraft, parent=sg)
+    card = box('SignCard', (1.52, 0.03, 0.82), (0, 0, 0), m=paper, parent=sg)
+    corners = []
+    for i, (x, z) in enumerate(((-0.74, 0.39), (0.74, 0.39), (0.74, -0.39), (-0.74, -0.39))):
+        e = bpy.data.objects.new(f'SignCorner{i}', None); sc.collection.objects.link(e)
+        e.parent = sg; e.location = (x, -0.02, z); corners.append(e)
+    sign = [border, card]
+    for o in laptop + sign:
+        o.hide_render = True
+    return {'laptop': laptop, 'sign': sign, 'corners': corners}
 
 
 def build_mic(sc):
@@ -369,7 +423,7 @@ def build_mic(sc):
     return parts
 
 
-def pose(parts, yaw=0.0, pitch=0.0, roll=0.0, armL=28.0, armR=28.0, armLfwd=0.0, armRfwd=0.0, turn=0.0, sit=False, mic=False):
+def pose(parts, yaw=0.0, pitch=0.0, roll=0.0, armL=28.0, armR=28.0, armLfwd=0.0, armRfwd=0.0, turn=0.0, sit=False, mic=False, laptop=False, sign=False):
     """yaw > 0 turns the face to the image right, pitch > 0 looks down. Head takes the turn, the body a part of it.
     turn spins the whole body (turn-around frames); sit lowers the body with the legs out front; mic renders the
     microphone alone."""
@@ -385,6 +439,10 @@ def pose(parts, yaw=0.0, pitch=0.0, roll=0.0, armL=28.0, armR=28.0, armLfwd=0.0,
         o.hide_render = mic
     for o in parts['mic']:
         o.hide_render = not mic
+    for o in parts['props']['laptop']:
+        o.hide_render = not laptop or mic
+    for o in parts['props']['sign']:
+        o.hide_render = not sign or mic
     parts['arms']['L'].rotation_euler = Euler((math.radians(armLfwd), math.radians(-armL), 0), 'XYZ')
     parts['arms']['R'].rotation_euler = Euler((math.radians(armRfwd), math.radians(armR), 0), 'XYZ')
 
@@ -458,6 +516,12 @@ if __name__ == '__main__':
             ('dance_1', dict(armL=36, armR=132, armLfwd=-10, armRfwd=-10, roll=7, yaw=6)),
             ('hold', dict(armL=34, armR=34, armLfwd=-78, armRfwd=-78, pitch=6)),
             ('bow', dict(pitch=12, armL=14, armR=14, armLfwd=-20, armRfwd=-20)),
+            # v1.2: at the laptop (two typing frames and a look up) and holding up a sign.
+            ('type_0', dict(sit=True, laptop=True, pitch=9, armL=16, armR=16, armLfwd=-64, armRfwd=-56)),
+            ('type_1', dict(sit=True, laptop=True, pitch=9, yaw=-2, armL=16, armR=16, armLfwd=-54, armRfwd=-66)),
+            ('type_look', dict(sit=True, laptop=True, pitch=-2, yaw=6, armL=16, armR=16, armLfwd=-60, armRfwd=-60)),
+            ('sign_0', dict(sign=True, pitch=2, armL=34, armR=34, armLfwd=-80, armRfwd=-80)),
+            ('sign_1', dict(sign=True, pitch=0, yaw=5, roll=4, armL=34, armR=34, armLfwd=-84, armRfwd=-76)),
         ]
         only = set(ARGS[2].split(',')) if len(ARGS) > 2 else None
         for name, kw in jobs:
@@ -466,6 +530,9 @@ if __name__ == '__main__':
             pose(parts, **kw)
             render(sc, os.path.join(out_dir, f'{name}.png'))
             frames[name] = anchors2d(sc, parts)
+            if kw.get('sign'):
+                frames[name]['board'] = [[round(c.x, 5), round(1 - c.y, 5)] for c in
+                    (world_to_camera_view(sc, parts['cam'], e.matrix_world.translation) for e in parts['props']['corners'])]
             print('DONE', name, flush=True)
         prev = {}
         ap = os.path.join(out_dir, 'anchors.json')

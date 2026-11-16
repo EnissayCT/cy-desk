@@ -25,6 +25,7 @@
         <button class="nav-btn" data-space="servers" title="Servers"><i data-icon="server"></i></button>
         <button class="nav-btn" data-space="money" title="Money"><i data-icon="wallet"></i></button>
         <button class="nav-btn" data-space="health" title="Health"><i data-icon="heart-pulse"></i></button>
+        <button class="nav-btn" data-space="widgets" title="Widgets"><i data-icon="gauge"></i></button>
       </div>
       <div class="nav nav-bottom">
         <button class="nav-btn" id="briefBtn" title="Daily brief"><i data-icon="sunrise"></i></button>
@@ -77,8 +78,12 @@
 
       <div class="col center">
         <section class="card stage" id="stage">
-          <div class="stage-glow"></div>
+         <!-- The card's background is its own element so a space can grow it with one cheap transform (Spaces.flip). -->
+         <div class="stage-bg" id="stageBg"></div>
+         <div class="stage-in" id="stageIn">
           <div class="bubble" id="bubble"><span id="bubbleText">Hi!</span></div>
+          <div class="cy-wrap" id="cyWrap">
+          <div class="stage-glow"></div>
           <div class="mascot" id="mascot" title="Poke me">
             <canvas id="mascotCanvas"></canvas>
             <svg class="face" id="face" aria-hidden="true"></svg>
@@ -86,14 +91,15 @@
             <div class="fx" id="fx"></div>
           </div>
           <img class="mic" id="mic" alt="">
-
           <div class="floor"></div>
+          </div>
           <div class="stage-caption" id="caption"></div>
           <!-- A space (Claude, servers, money, health, a project) opens here, on both sides of Cy. -->
           <div class="space-panel" id="spacePanel" aria-hidden="true">
             <div class="sp-side left scroll" id="spaceLeft"></div>
             <div class="sp-side right scroll" id="spaceRight"></div>
           </div>
+         </div>
         </section>
         <section class="card activity" id="activityCard">
           <div class="card-head"><div><h2>Activity</h2><p id="activitySub"></p></div>
@@ -121,6 +127,7 @@
   <script src="mascot.js"></script>
   <script src="app.js"></script>
   <script src="spaces.js"></script>
+  <script src="cylife.js"></script>
   <script src="panels.js"></script>
   <script type="module" src="model.js"></script>
 </body>

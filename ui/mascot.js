@@ -116,14 +116,14 @@
   }
 
   // ---------------------------------------------------------------- drawing
-  let dirty = true, lastKey = '', headless = false;
+  let dirty = true, lastKey = '', headless = false, frozen = false;
   function weights() {
     const acc = {};
     for (const [l, w] of currentMix()) for (const [n, sw] of samples(l)) if (sw * w > 0.004) acc[n] = (acc[n] || 0) + sw * w;
     return acc;
   }
   function draw() {
-    if (headless) return; // a custom 3D model is drawn instead (ui/model.js)
+    if (headless || frozen) return; // a custom 3D model draws instead (ui/model.js), or a space is opening
     const ws = weights();
     const key = Object.entries(ws).map(([n, w]) => `${n}:${w.toFixed(3)}`).join('|') + `|${eye.x.toFixed(2)},${eye.y.toFixed(2)}`;
     if (key === lastKey && !dirty) return;
@@ -153,12 +153,13 @@
   }
   function placeFace(ws) {
     // Blend the anchors of every frame on screen.
-    const A = {};
-    let total = 0;
+    const A = {}, B = [[0, 0], [0, 0], [0, 0], [0, 0]];
+    let total = 0, boardW = 0;
     for (const [n, w] of Object.entries(ws)) {
       const fr = M.frames[n]; if (!fr) continue;
       total += w;
       for (const [k, a] of Object.entries(fr)) {
+        if (k === 'board') { boardW += w; for (let i = 0; i < 4; i++) { B[i][0] += a[i][0] * w; B[i][1] += a[i][1] * w; } continue; }
         const t = A[k] || (A[k] = { x: 0, y: 0, ax0: 0, ax1: 0, az0: 0, az1: 0, f: 0 });
         t.x += a.x * w; t.y += a.y * w; t.ax0 += a.ax[0] * w; t.ax1 += a.ax[1] * w; t.az0 += a.az[0] * w; t.az1 += a.az[1] * w; t.f += a.facing * w;
       }
@@ -174,6 +175,68 @@
       const f = a.f / total;
       g.style.opacity = f < 0.3 ? 0 : f < 0.5 ? (f - 0.3) / 0.2 : 1;
     }
+    // Things Cy wears sit in the frame between the eyes (1 unit = 1/100 of a world unit on the head).
+    const L = A.eyeL, R = A.eyeR;
+    if (L && R) {
+      const avg = (k) => (L[k] + R[k]) / 2 / total;
+      const rx = -avg('ax0') * W * 0.01, ry = -avg('ax1') * H * 0.01, dx = -avg('az0') * W * 0.01, dy = -avg('az1') * H * 0.01;
+      wearG.setAttribute('transform', `matrix(${rx.toFixed(4)} ${ry.toFixed(4)} ${dx.toFixed(4)} ${dy.toFixed(4)} ${(avg('x') * W).toFixed(2)} ${(avg('y') * H).toFixed(2)})`);
+      const f = avg('f');
+      wearG.style.opacity = f < 0.3 ? 0 : f < 0.5 ? (f - 0.3) / 0.2 : 1;
+    }
+    // The sign's text sits on the rendered board (its corners exported per pose).
+    if (boardW / total > 0.5) {
+      const c = B.map(([x, y]) => [x / boardW, y / boardW]);
+      const x0 = Math.min(c[0][0], c[3][0]), x1 = Math.max(c[1][0], c[2][0]), y0 = Math.min(c[0][1], c[1][1]), y1 = Math.max(c[2][1], c[3][1]);
+      Object.assign(signEl.style, { left: `${x0 * 100}%`, top: `${y0 * 100}%`, width: `${(x1 - x0) * 100}%`, height: `${(y1 - y0) * 100}%` });
+      signEl.classList.add('on');
+    } else signEl.classList.remove('on');
+  }
+
+  // ---------------------------------------------------------------- what Cy wears (XP unlocks)
+  const wearG = document.createElementNS(NS, 'g'); wearG.setAttribute('class', 'wear'); face.appendChild(wearG);
+  const signEl = document.createElement('button'); signEl.className = 'sign-text'; signEl.type = 'button'; el.appendChild(signEl);
+  const ribs = [-66, -44, -22, 0, 22, 44, 66].map((x) => `<path d="M ${x} -40 Q ${x * 1.02} -74 ${x * 0.7} -98"/>`).join('');
+  const petals = [0, 72, 144, 216, 288].map((r) => `<ellipse rx="10" ry="17" cy="-14" fill="#ff8fab" transform="rotate(${r})"/>`).join('');
+  const WEAR = {
+    sunglasses: `<g><defs><linearGradient id="wsg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a3340"/><stop offset=".55" stop-color="#121014"/><stop offset="1" stop-color="#2a2430"/></linearGradient></defs>
+      <path d="M -50 -10 Q -30 -16 -10 -10 L -12 8 Q -30 20 -46 8 Z M 10 -10 Q 30 -16 50 -10 L 46 8 Q 30 20 12 8 Z" fill="url(#wsg)" stroke="#0b0a0c" stroke-width="2.4" stroke-linejoin="round"/>
+      <path d="M -10 -8 Q 0 -12 10 -8" fill="none" stroke="#0b0a0c" stroke-width="3"/>
+      <path d="M -42 -7 L -30 -9 M 18 -7 L 30 -9" stroke="#fff" stroke-opacity=".45" stroke-width="2.5" stroke-linecap="round"/></g>`,
+    glasses: `<g fill="rgba(200,230,255,.12)" stroke="#b8862b" stroke-width="2.6"><circle cx="-30" cy="0" r="17"/><circle cx="30" cy="0" r="17"/><path d="M -13 -3 Q 0 -10 13 -3" fill="none"/>
+      <path d="M -40 -8 Q -34 -12 -28 -12" stroke="#fff" stroke-opacity=".6" stroke-width="2" fill="none"/></g>`,
+    party: `<g transform="translate(28 -80) rotate(18)"><defs><linearGradient id="wph" x1="0" x2="1"><stop offset="0" stop-color="#ff7aa2"/><stop offset="1" stop-color="#ec4f74"/></linearGradient></defs>
+      <path d="M -26 0 L 0 -50 L 26 0 Q 0 8 -26 0 Z" fill="url(#wph)"/><path d="M -17 -14 L 16 -9 M -9 -31 L 9 -28" stroke="#ffd66b" stroke-width="5" stroke-linecap="round"/>
+      <circle cy="-52" r="7" fill="#ffd66b"/><path d="M -26 0 Q 0 8 26 0" fill="none" stroke="#c23b61" stroke-width="2"/></g>`,
+    headphones: `<g><path d="M -100 6 Q -102 -98 0 -100 Q 102 -98 100 6" fill="none" stroke="#1d1a1f" stroke-width="10" stroke-linecap="round"/>
+      <path d="M -100 6 Q -102 -98 0 -100 Q 102 -98 100 6" fill="none" stroke="#4a4450" stroke-width="3" stroke-linecap="round" transform="translate(0 -3)"/>
+      <rect x="-120" y="-20" width="30" height="50" rx="13" fill="#1d1a1f"/><rect x="90" y="-20" width="30" height="50" rx="13" fill="#1d1a1f"/>
+      <rect x="-114" y="-12" width="10" height="34" rx="5" fill="#f5b42a"/><rect x="104" y="-12" width="10" height="34" rx="5" fill="#f5b42a"/></g>`,
+    beanie: `<g><defs><linearGradient id="wbn" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f7bf4a"/><stop offset="1" stop-color="#e09a1a"/></linearGradient></defs>
+      <path d="M -100 -30 Q -102 -102 0 -104 Q 102 -102 100 -30 Z" fill="url(#wbn)"/>
+      <g stroke="#c98612" stroke-width="2.4" opacity=".7" fill="none">${ribs}</g>
+      <rect x="-106" y="-44" width="212" height="24" rx="12" fill="#d68c12"/><circle cy="-108" r="14" fill="#fbe3a6"/><circle cx="-4" cy="-112" r="5" fill="#fff" opacity=".5"/></g>`,
+    bowtie: `<g transform="translate(0 112)"><path d="M -4 0 L -40 -18 Q -46 0 -40 18 Z M 4 0 L 40 -18 Q 46 0 40 18 Z" fill="#454f94"/><rect x="-9" y="-10" width="18" height="20" rx="5" fill="#363f7d"/>
+      <path d="M -36 -10 L -14 -2 M 36 -10 L 14 -2" stroke="#fff" stroke-opacity=".3" stroke-width="2"/></g>`,
+    flower: `<g transform="translate(58 -70)">${petals}<circle r="9" fill="#ffd66b"/><circle r="3" cx="-2" cy="-2" fill="#fff" opacity=".6"/></g>`,
+    crown: `<g transform="translate(0 -82)"><defs><linearGradient id="wcr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe08a"/><stop offset="1" stop-color="#e3a514"/></linearGradient></defs>
+      <path d="M -40 8 L -45 -26 L -20 -8 L 0 -34 L 20 -8 L 45 -26 L 40 8 Z" fill="url(#wcr)" stroke="#b9800c" stroke-width="2.5" stroke-linejoin="round"/>
+      <circle cx="0" cy="-1" r="6" fill="#ec4f74"/><circle cx="-24" cy="1" r="4.5" fill="#4a62d8"/><circle cx="24" cy="1" r="4.5" fill="#1f9d63"/>
+      <circle cx="-45" cy="-28" r="4.5" fill="#ffe08a"/><circle cx="0" cy="-36" r="4.5" fill="#ffe08a"/><circle cx="45" cy="-28" r="4.5" fill="#ffe08a"/></g>`,
+    wizard: `<g transform="translate(0 -74)"><defs><linearGradient id="wwz" x1="0" x2="1"><stop offset="0" stop-color="#3b3f8f"/><stop offset="1" stop-color="#262a66"/></linearGradient></defs>
+      <path d="M -52 0 Q -16 -30 2 -62 Q 18 -74 44 -66 Q 26 -58 22 -40 Q 30 -18 54 0 Z" fill="url(#wwz)"/><ellipse rx="88" ry="13" fill="#2c3075"/>
+      <path d="M -10 -24 l 3.5 7.5 l 8 1 l -6 5 l 2.5 8 l -8 -4.5 l -8 4.5 l 2.5 -8 l -6 -5 l 8 -1 Z" fill="#ffd66b"/><circle cx="40" cy="-66" r="4" fill="#ffd66b"/><circle cx="22" cy="-10" r="2.5" fill="#ffd66b"/></g>`
+  };
+  let wearing = [];
+  function setWear(list) {
+    const ids = (list || []).filter((id) => WEAR[id]);
+    const key = ids.join(',');
+    if (key === wearing.join(',')) return;
+    wearing = ids;
+    // One group, drawn back to front: hats and headphones first, glasses and bow tie last.
+    const order = ['headphones', 'beanie', 'wizard', 'party', 'crown', 'flower', 'bowtie', 'glasses', 'sunglasses'];
+    wearG.innerHTML = order.filter((id) => ids.includes(id)).map((id) => WEAR[id]).join('');
+    dirty = true; wakeLoop();
   }
 
   const EYES = {
@@ -512,6 +575,32 @@
       for (let i = 0; i < 2; i++) { aim(-10, 2, 9); await wait(190, tk); aim(10, 2, 9); await wait(190, tk); }
       aim(0, 0, 4);
     },
+    // A Claude session is working: Cy works too, on a tiny laptop.
+    async type(tk, text) {
+      prefetch(['type_0', 'type_1', 'type_look']);
+      sitting = true; faceOverride = 'content'; applyFace();
+      if (text) say(text, 6000);
+      const end = Date.now() + rand(14000, 26000);
+      let i = 0;
+      while (Date.now() < end) {
+        if (i % 11 === 10) { setLook(F('type_look'), 260); faceOverride = 'happy'; applyFace(); await wait(1400, tk); faceOverride = 'content'; applyFace(); }
+        setLook(F(i % 2 ? 'type_1' : 'type_0'), 120);
+        await wait(rand(150, 260), tk); i++;
+      }
+      faceOverride = null; await standUp();
+    },
+    // A Claude session waits for an answer: Cy holds up a sign with its name; a click opens it.
+    async sign(tk, s) {
+      prefetch(['sign_0', 'sign_1']);
+      signEl.textContent = (s && s.text) || 'Needs you';
+      signEl.onclick = s && s.onClick ? (e) => { e.stopPropagation(); s.onClick(); } : null;
+      setLook(F('sign_0'), 320); faceOverride = 'curious'; applyFace();
+      if (s && s.say) say(s.say, 9000);
+      try {
+        for (let i = 0; i < 6; i++) { await wait(rand(900, 1400), tk); setLook(F(i % 2 ? 'sign_0' : 'sign_1'), 420); }
+        await wait(1200, tk);
+      } finally { faceOverride = null; applyFace(); setLook(GAZE, 380); signEl.onclick = null; }
+    },
     async endOfDay(tk) {
       say(pick(['Good work today. Wrap up soon?', 'Day is nearly done. Write down where you stopped?']), 8000);
       await A.wave(tk);
@@ -751,6 +840,9 @@
       if (on && act && act.name !== 'sit') { cancelAct(); setLook(GAZE, 300); }
     },
     run: (name, arg) => { if (A[name]) run(name, (tk) => A[name](tk, arg)); },
+    setWear,
+    cancel: () => { cancelAct(); if (!sitting) setLook(GAZE, 300); },
+    get wearing() { return wearing.slice(); },
     // A space opened beside Cy (or closed: null). Cy gets up, faces it and points.
     setSpace: (name, line) => {
       const was = space; space = name || null;
@@ -766,6 +858,9 @@
         if (line) say(line, 3000);
       }
     },
+    // While a space opens or closes, Cy holds its last frame: redrawing the canvas and face under a
+    // moving, scaling layer is what cost frames.
+    freeze: (on) => { frozen = !!on; if (!on) { dirty = true; wakeLoop(); } },
     setHeadless: (on) => { headless = !!on; if (!on) { dirty = true; wakeLoop(); } else ctx.clearRect(0, 0, canvas.width, canvas.height); },
     relayout: () => { fitCanvas(); dirty = true; wakeLoop(); },
     ideaSource: null,

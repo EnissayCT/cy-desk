@@ -22,6 +22,10 @@
     { "id": "docs", "url": "https://docs.example.com/", "host": "docs.example.com" },
     { "id": "blog", "url": "https://blog.example.org/", "host": "blog.example.org" }
   ],
+  "widgets": [
+    { "id": "node", "title": "Node.js version", "source": "command", "command": "node --version", "every": 60 },
+    { "id": "uptime", "title": "Uptime of this check (ms)", "source": "command", "command": "node -e \"console.log(Math.round(performance.now()*1000))\"", "every": 1 }
+  ],
   "groups": [
     {
       "id": "client", "name": "Northwind · Platform", "servers": ["api"], "sites": ["app", "docs"],

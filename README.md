@@ -16,11 +16,18 @@
 
 - **Lives on the desktop.** On Windows it is pinned under every window: it stays on Win+D and clicking it never brings it in front. On Linux it is a desktop-type window; on macOS a borderless window on every Space, raised with ⌘⌥C. It starts with the system.
 - **Cy, the companion.** A fur plush rendered in Blender. It isn't a cursor follower: it gets interested, bored and distracted. It sits, dozes off, has ideas (tips from your own data), thinks, dances on Friday afternoons, plays peekaboo, has its coffee in the morning and a sandwich at lunch, nods when you add a task, cheers your new commits, and bows after a song. Its mood is your system's state.
-- **Spaces.** Four buttons under the projects open a full page: the stage takes the whole dashboard, Cy stands up in the middle, bigger, and panels open on both sides.
+- **Talk to Cy.** Type in the box on the stage (or Ctrl+K and a question ending in "?"). Cy answers in its bubble through the Claude API with your key, reading a summary of your dashboard: what is broken, what to do next, how your week went. Haiku 5.5 by default (fast and cheap, it reads and chats); Sonnet or Opus 5.5 in Settings › Cy.
+- **Cy levels up.** XP for finished tasks, focus minutes, commits, water, stretches and a mood check-in (capped per day, so nothing can be farmed). Levels unlock things to wear: sunglasses, party hat, headphones, beanie, bow tie, round glasses, a flower, a crown, a wizard hat.
+- **Cy reacts to your Claude Code sessions.** One working: Cy sits down and types along on a tiny laptop. One waiting for an answer: Cy holds up a sign with its name, and clicking the sign opens that session.
+- **Weather and time of day.** Haiku looks up your city's weather with a web search every 3 hours; the stage rains, snows, clouds over or shows stars, and turns warm at dawn and dusk and lamp-lit at night.
+- **Command palette and quick add.** Ctrl+K for everything (spaces, projects, focus on a task, + to add a task, ? to ask Cy). Ctrl+Alt+N from any app opens a small window to add a task without leaving what you are doing.
+- **Your own widgets.** Any number or short text from a URL (JSON or plain text) or a command on this computer, with a sparkline: stars on a repo, open issues, a queue length, a script's output.
+- **Spaces.** Five buttons under the projects open a full page: the stage takes the whole dashboard, Cy stands up in the middle, bigger, and panels open on both sides.
   - **Claude**: every session with its state (*working*, *needs you*, *blocked*, *done*), tokens and prompts per day, models, where you work, a one-click new session in any project.
   - **Servers**: per server load sparkline, memory, disk, uptime, services, containers and PM2 apps, websites with latency and certificate expiry, alerts.
   - **Money**: a personal ledger, spending by category, six months against a budget, subscriptions with their next charge.
   - **Health**: screen time and breaks (from input idle time only), water, mood, stretches, bedtime reminder.
+  - **Widgets**: your custom widgets.
 - **Project dashboards.** Click a project: its KPIs, commits per week, linked servers and sites, recent commits, its Claude sessions, and its to-do list.
 - **Connected to Claude Code.** One click (Settings › Claude) registers CY Desk as an MCP server: any session can list and add your to-dos, tick them off, check your servers or log an expense. Optionally a short note in your `CLAUDE.md` tells sessions to log only what matters, never secrets.
 - **Activity heatmap.** 16 weeks of commits from every project repo plus the repos you use Claude Code in. Hover a day for the commits per project and the week's total.
@@ -60,15 +67,18 @@ Tools: `cy_list_projects`, `cy_list_todos`, `cy_add_todo`, `cy_complete_todo`, `
 
 ## Privacy
 
-Everything stays on the computer.
+Everything stays on the computer, except what you send to Claude when you talk to Cy.
 
 | Feature | What is read | What is never done |
 |---|---|---|
+| Talking to Cy | your message and a summary of the dashboard (task names, server and site states, Claude session titles, today's health, this month's spending total), sent to Anthropic's API with your key | nothing is sent unless you talk to Cy; the key is stored encrypted by the system |
+| Weather | your city, in one web search by Haiku every 3 hours while you are at the computer | off without a key or a city |
 | Servers | one read-only batch of commands per server every 2 min, over SSH with your key | no writes, nothing installed |
 | Claude | the session transcripts on this disk (`~/.claude/projects`), streamed in small chunks | nothing sent anywhere |
 | Health | input idle time: was there a key or mouse event in the last minute | no keystrokes, no screen content |
 | Singing | Windows' volume-mixer peak levels and the title of the app playing | no recording |
 | Money | what you type in | stays in your data folder |
+| Widgets | the URLs and commands you add | nothing else is fetched or run |
 
 ## How it works
 
@@ -77,8 +87,9 @@ Everything stays on the computer.
 │ lib/desktop.js    Win32 via koffi: desktop host owner  │       │ app.js     dashboard, heatmap + tooltip, focus, agents │
 │ lib/platform.js   terminals, ssh, disk per OS          │  IPC  │ spaces.js  Claude, servers, money, health, projects    │
 │ lib/collectors    SSH probes, HTTPS/TLS, git activity  │◄─────►│ panels.js  daily brief, settings, setup wizard         │
-│ lib/claude.js     usage (worker thread), MCP connect   │       │ mascot.js  Cy: frame blending, springs, attention,     │
-│ lib/ledger · health · focus · agents · todos · paths   │       │            activities, singing, SVG face per pose      │
+│ lib/claude.js     usage (worker thread), MCP connect   │       │ cylife.js  talk, XP, outfits, weather, palette, agents │
+│ lib/cybrain.js    talk + weather (Anthropic SDK)       │       │ mascot.js  Cy: frame blending, springs, attention,     │
+│ lib/xp · widgets · ledger · health · focus · todos     │       │            activities, singing, SVG face per pose      │
 │ native/audiometer.exe  COM peak meters → JSON lines    │       │ model.js   your .glb with three.js, driven by Cy's brain│
 └────────────────────────────────────────────────────────┘       └────────────────────────────────────────────────────────┘
 mcp.js  stdio MCP server for Claude Code (no dependencies)        todo.js  the same to-dos from a terminal
@@ -88,15 +99,15 @@ Decisions worth knowing:
 
 - **Desktop pinning (Windows).** The window is *owned* by the desktop's icon host and refuses z-order changes in `WM_WINDOWPOSCHANGING`, so it survives *Show desktop* and never covers an app, while staying clickable.
 - **Software rendering, on purpose.** A desktop-owned GPU surface shows corrupt tiles on some hybrid-graphics laptops. Cy costs about 2–3 % of one core while visible and pauses when a maximized app covers the desktop.
-- **Cy is pre-rendered, not real-time 3D.** `mascot/build_mascot.py` builds the plush in Blender (geometry-nodes fur, Cycles) and renders 182 poses: a 21 × 7 grid of head turns, a turn-around, sitting, waving, cheering, sleeping, singing, dancing, thinking, pointing, holding, bowing, and a mic layer. The page blends the nearest frames, springs drive the head with the eyes leading, and the face is SVG placed with anchors exported per pose.
-- **Spaces animate the real layout.** Every grid track is a length, so opening a space interpolates `grid-template-columns` instead of swapping pages.
+- **Cy is pre-rendered, not real-time 3D.** `mascot/build_mascot.py` builds the plush in Blender (geometry-nodes fur, Cycles) and renders 187 poses: a 21 × 7 grid of head turns, a turn-around, sitting, waving, cheering, sleeping, singing, dancing, thinking, pointing, holding, bowing, typing on a laptop, holding up a sign (its corners exported so the page writes on it), and a mic layer. Outfits are SVG placed with the same per-pose head anchors as the face. The page blends the nearest frames, springs drive the head with the eyes leading, and the face is SVG placed with anchors exported per pose.
+- **Transitions never relayout or repaint.** In software rendering the compositor's slow paths are layout, repaint, scaling a big layer and fading one that needs an offscreen surface. Opening a space switches the layout once, then only crossfades the card, glides Cy's small layers and slides the panels, as compositor animations (about 40 fps in software, 60 with Settings › General › Smooth animations, which uses the graphics card).
 - **Transcripts stay cheap.** Claude transcripts reach hundreds of MB; usage is read in 1 MB chunks from where the last read stopped, in a worker thread (≈75 MB peak for 2 GB of transcripts).
 
 ## Development
 
 ```bash
 npm run dev          # a normal window instead of the desktop
-npm test             # end-to-end suites (UI, Cy, features, spaces + MCP) in demo mode: no network needed
+npm test             # 180 checks: Cy's brain against a fake API, then the UI, Cy, features, spaces + MCP and life suites in demo mode (no network, no key)
 npm run test:live    # the UI suite against your own config
 npm run dist         # installer for this OS in dist/ (CI builds all three)
 ```

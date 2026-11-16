@@ -27,6 +27,9 @@ const demo = require('./lib/demo');
 const claude = require('./lib/claude');
 const ledger = require('./lib/ledger');
 const health = require('./lib/health');
+const cybrain = require('./lib/cybrain');
+const xp = require('./lib/xp');
+const widgets = require('./lib/widgets');
 const IS_WIN = process.platform === 'win32';
 
 const CONFIG_FILE = paths.CONFIG_FILE;
@@ -39,7 +42,7 @@ fs.mkdirSync(paths.CONFIG_DIR, { recursive: true });
 let firstRun = false;
 if (!fs.existsSync(CONFIG_FILE)) {
   const example = JSON.parse(fs.readFileSync(EXAMPLE_FILE, 'utf8'));
-  example.servers = {}; example.sites = []; example.groups = [{ id: 'work', name: 'Projects', items: [] }];
+  example.servers = {}; example.sites = []; example.widgets = []; example.groups = [{ id: 'work', name: 'Projects', items: [] }];
   fs.writeFileSync(CONFIG_FILE, JSON.stringify(example, null, 2));
   firstRun = true;
 }
@@ -50,10 +53,12 @@ let locked = false, coveredNow = false, lastCovered = null;
 
 // theme: 'auto' follows the system's light/dark mode. companion: the built-in Cy, or the
 // user's own 3D model (a .glb copied into the data folder).
-let settings = { theme: 'auto', sing: true, breaks: true, breakMin: 90, focusMin: 25, onboarded: true, lastBrief: '', companion: { type: 'cy' } };
+let settings = { theme: 'auto', sing: true, breaks: true, breakMin: 90, focusMin: 25, onboarded: true, lastBrief: '', companion: { type: 'cy' },
+  chatModel: 'claude-haiku-5-5', weatherOn: true, weatherPlace: '' };
 try { Object.assign(settings, JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'))); } catch {}
 if (firstRun) settings.onboarded = false;
-const SETTING_KEYS = { theme: ['auto', 'light', 'dark'], sing: 'bool', breaks: 'bool', breakMin: [45, 60, 90, 120], focusMin: [15, 25, 50, 90], onboarded: 'bool', lastBrief: 'string' };
+const SETTING_KEYS = { theme: ['auto', 'light', 'dark'], sing: 'bool', breaks: 'bool', breakMin: [45, 60, 90, 120], focusMin: [15, 25, 50, 90], onboarded: 'bool', lastBrief: 'string', gpu: 'bool',
+  chatModel: cybrain.MODELS.map(([id]) => id), weatherOn: 'bool', weatherPlace: 'string' };
 // A user's 3D model is drawn with WebGL; with GPU compositing off (see below) that needs the
 // software rasterizer. Chromium asks for it explicitly since v130.
 app.commandLine.appendSwitch('enable-unsafe-swiftshader');
@@ -108,7 +113,15 @@ if (!windowed && !app.requestSingleInstanceLock()) { app.quit(); }
 // Pinned to the desktop, GPU-composited frames show blocks of garbage on this
 // Intel + NVIDIA laptop. Software rendering is clean, and the page is static enough
 // that it costs next to nothing. --gpu turns acceleration back on to compare.
-if (!process.argv.includes('--gpu')) app.disableHardwareAcceleration();
+// settings.gpu (Settings > General, tray) turns the graphics card on for 60 fps animations; tests
+// and the demo keep software unless --gpu is passed, so results don't depend on the machine.
+// In GPU mode Windows presents without DirectComposition, which is what tends to break in unusual
+// window trees like a desktop-owned window.
+const useGpu = process.argv.includes('--gpu') || (!!settings.gpu && !testRun && !process.argv.includes('--no-gpu'));
+if (!useGpu) app.disableHardwareAcceleration();
+else if (process.platform === 'win32') app.commandLine.appendSwitch('disable-direct-composition');
+// Turning the graphics card on or off needs a restart.
+function relaunchForGpu() { if (testRun) return; app.relaunch(); quitting = true; app.exit(0); }
 
 function send(channel, payload) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
@@ -210,7 +223,7 @@ async function refreshGit() {
   const onlyMine = !!(config.activity && config.activity.onlyMine);
   status.activity = await collectors.gitActivity(await activitySpecs(), { weeks: 16, emails: onlyMine ? await myEmails() : null });
   // Cy notices new commits (not on the first read after start).
-  if (before !== null && status.activity.total > before) send('commits', { added: status.activity.total - before });
+  if (before !== null && status.activity.total > before) { send('commits', { added: status.activity.total - before }); grantXp('commit', status.activity.total - before); }
   for (const g of config.groups) {
     if (g.repo) { const all = await collectors.gitStats(g.repo, []); if (all) status.git[`__repo_${g.id}`] = all; }
     for (const item of g.items) {
@@ -298,6 +311,10 @@ function buildTray() {
       click: (m) => { require('./lib/desktop').setIcons(m.checked); iconsHiddenByUs = !m.checked; }
     }]),
     { label: 'Edit projects (config.json)', click: () => shell.openPath(CONFIG_FILE) },
+    {
+      label: 'Smooth animations (graphics card)', type: 'checkbox', checked: !!settings.gpu,
+      click: (m) => { settings.gpu = m.checked; saveSettings(); relaunchForGpu(); }
+    },
     ...(IS_WIN ? [{
       label: 'Cy sings along to music', type: 'checkbox', checked: settings.sing !== false,
       click: (m) => { settings.sing = m.checked; saveSettings(); send('sing', m.checked); if (m.checked) { meterRestarts = 0; startMeter(); } else stopMeter(); }
@@ -330,7 +347,87 @@ function loginArgs() {
 ipcMain.handle('init', () => ({ config, todos: todos.load(), status, user: config.user, theme: resolvedTheme(), covered: coveredNow,
   sing: settings.sing !== false, settings, focus: focus.active(), focusWeek: focusWeek(), agents: agentList, vitals: lastVitals, version: app.getVersion(),
   platform: { os: process.platform, name: platform.OS_NAME, canSing: IS_WIN, canLogin: process.platform !== 'linux', pinned: !windowed && process.platform !== 'darwin' },
-  demo: demoMode, dataDir: DATA_DIR }));
+  demo: demoMode, dataDir: DATA_DIR,
+  xp: xp.summary(), hasKey: !!apiKey(), models: cybrain.MODELS, weather: weatherNow, widgets: { ...widgets.state } }));
+
+// ---------- Cy's brain (Claude API) ----------
+// The key lives encrypted (Windows DPAPI / macOS Keychain / libsecret through safeStorage) in its own
+// file, never in settings.json and never sent to the page.
+const { safeStorage } = require('electron');
+const SECRETS_FILE = path.join(DATA_DIR, 'secrets.json');
+function apiKey() {
+  if (process.env.ANTHROPIC_API_KEY) return process.env.ANTHROPIC_API_KEY;
+  try {
+    const s = JSON.parse(fs.readFileSync(SECRETS_FILE, 'utf8'));
+    return s.anthropic && safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(Buffer.from(s.anthropic, 'base64')) : '';
+  } catch { return ''; }
+}
+ipcMain.handle('cy:key:set', async (_e, key) => {
+  key = String(key || '').trim();
+  if (!/^sk-ant-[\w-]{20,}$/.test(key)) return { ok: false, error: 'That does not look like an Anthropic API key (sk-ant-…).' };
+  if (!safeStorage.isEncryptionAvailable()) return { ok: false, error: 'This system offers no secure storage for the key.' };
+  const check = dryRun ? { ok: true } : await cybrain.test({ apiKey: key, model: settings.chatModel });
+  if (!check.ok) return check;
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(SECRETS_FILE, JSON.stringify({ anthropic: safeStorage.encryptString(key).toString('base64') }));
+  setTimeout(() => refreshWeather(true), 500);
+  return { ok: true };
+});
+ipcMain.handle('cy:key:clear', () => { try { fs.unlinkSync(SECRETS_FILE); } catch {} return { ok: true, hasKey: !!apiKey() }; });
+ipcMain.handle('cy:chat', async (_e, q) => {
+  if (demoMode && !apiKey()) return demo.chat(q && q.message);
+  return cybrain.chat({ apiKey: apiKey(), model: settings.chatModel, message: String((q && q.message) || '').slice(0, 2000),
+    snapshot: String((q && q.snapshot) || '').slice(0, 12000), history: Array.isArray(q && q.history) ? q.history.slice(-10) : [] });
+});
+
+// Weather: Haiku with web search, every 3 hours while someone is at the computer (one search each,
+// about a cent). Off without a key or a place; Settings > Cy.
+let weatherNow = null, weatherAt = 0;
+async function refreshWeather(force) {
+  if (demoMode) { weatherNow = demo.weather(); send('weather', weatherNow); return; }
+  if (!settings.weatherOn || !settings.weatherPlace || !apiKey()) { if (weatherNow) { weatherNow = null; send('weather', null); } return; }
+  if (!force && Date.now() - weatherAt < 3 * 3600000) return;
+  if (!force && powerMonitor.getSystemIdleTime() > 600) return;
+  weatherAt = Date.now();
+  const w = await cybrain.weather({ apiKey: apiKey(), place: settings.weatherPlace });
+  if (w.ok) { weatherNow = w; send('weather', w); }
+  else console.error('weather', w.error);
+}
+ipcMain.handle('cy:weather', () => refreshWeather(true).then(() => weatherNow));
+
+// ---------- XP ----------
+function grantXp(kind, n, label) {
+  const r = xp.grant(kind, n, label);
+  if (r) send('xp', { ...xp.summary(), event: r });
+}
+ipcMain.handle('xp:get', () => xp.summary());
+ipcMain.handle('xp:equip', (_e, id, on) => { const s = xp.equip(String(id), !!on); send('xp', s); return s; });
+// Tasks ticked anywhere (here, todo.js, the MCP server) count once.
+let doneSeen = null;
+function xpFromTodos(list) {
+  const done = new Set(list.items.filter((t) => t.done).map((t) => t.id));
+  if (doneSeen) for (const t of list.items) if (t.done && !doneSeen.has(t.id)) grantXp('task', 1, t.text);
+  doneSeen = done;
+}
+
+// ---------- custom widgets ----------
+function startWidgets() { widgets.start(config, (st) => send('widgets', st)); }
+
+// ---------- quick add from anywhere (Ctrl+Alt+N) ----------
+let quickWin = null;
+function openQuickAdd() {
+  if (quickWin && !quickWin.isDestroyed()) { quickWin.show(); quickWin.focus(); return; }
+  quickWin = new BrowserWindow({ width: 560, height: 168, frame: false, resizable: false, alwaysOnTop: true, skipTaskbar: true, show: false,
+    backgroundColor: resolvedTheme() === 'dark' ? '#1d1c1a' : '#faf8f5', title: 'CY Desk · quick add',
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, spellcheck: false } });
+  quickWin.setMenu(null);
+  quickWin.loadFile(path.join(__dirname, 'ui', 'quick.html'));
+  quickWin.once('ready-to-show', () => { quickWin.show(); quickWin.focus(); });
+  quickWin.on('blur', () => { if (quickWin && !quickWin.isDestroyed() && !testRun) quickWin.close(); });
+  quickWin.on('closed', () => { quickWin = null; });
+}
+ipcMain.handle('quick:close', () => { if (quickWin && !quickWin.isDestroyed()) quickWin.close(); return true; });
+ipcMain.handle('quick:open', () => { openQuickAdd(); return true; });
 
 // ---------- Claude Code ----------
 // Transcript reading runs in a worker thread (lib/claude-worker.js): the first pass takes seconds.
@@ -368,7 +465,11 @@ ipcMain.handle('ledger:recurring', (_e, r) => ledger.addRecurring(r || {}));
 ipcMain.handle('ledger:remove', (_e, id) => ledger.remove(String(id || '')));
 ipcMain.handle('ledger:options', (_e, o) => ledger.setOptions(o || {}));
 ipcMain.handle('health:get', () => health.summary());
-ipcMain.handle('health:log', (_e, what, value) => health.log(what, value));
+ipcMain.handle('health:log', (_e, what, value) => {
+  const r = health.log(what, value);
+  if (what === 'water' && value !== -1) grantXp('water', 1); else if (what === 'stretch') grantXp('stretch', 1); else if (what === 'mood') grantXp('mood', 1);
+  return r;
+});
 ipcMain.handle('health:goals', (_e, g) => health.setGoals(g || {}));
 
 // ---------- companion (built-in Cy or the user's own 3D model) ----------
@@ -397,12 +498,16 @@ ipcMain.handle('companion:data', (_e, file) => {
 });
 
 // ---------- agents board ----------
-let agentList = [], agentKey = '';
+let agentList = [], agentKey = '', agentPrev = new Map();
 function refreshAgents() {
   try {
     agentList = demoMode ? demo.agents() : agents.scan(config);
     const key = JSON.stringify(agentList.map((a) => [a.sessionId, a.status, a.lastAt]));
-    if (key !== agentKey) { agentKey = key; send('agents', agentList); }
+    if (key !== agentKey) {
+      for (const a of agentList) if (agentPrev.get(a.sessionId) === 'working' && a.status === 'done') grantXp('agentDone', 1, a.title);
+      agentPrev = new Map(agentList.map((a) => [a.sessionId, a.status]));
+      agentKey = key; send('agents', agentList);
+    }
   } catch (e) { console.error('agents', e.message); }
 }
 ipcMain.handle('open:agent', (_e, a) => {
@@ -435,12 +540,13 @@ function armFocus() {
   focusTimer = setTimeout(() => {
     const s = focus.stop(true);
     send('focus', { active: null, ended: s, week: focusWeek() });
+    if (s && s.minutes) grantXp('focusMin', s.minutes, s.text);
     if (s && Notification.isSupported() && !dryRun) new Notification({ title: 'Focus session done', body: `${s.minutes} min on “${s.text}”. Take a short break.`, silent: false }).show();
   }, Math.max(0, a.endsAt - Date.now()));
 }
 ipcMain.handle('focus:start', (_e, f) => { const s = focus.start(f || {}); armFocus(); send('focus', { active: s, week: focusWeek() }); return s; });
 ipcMain.handle('focus:extend', (_e, m) => { const s = focus.extend(m); armFocus(); send('focus', { active: s, extended: true, week: focusWeek() }); return s; });
-ipcMain.handle('focus:stop', () => { const s = focus.stop(false); armFocus(); send('focus', { active: null, ended: s, stopped: true, week: focusWeek() }); return s; });
+ipcMain.handle('focus:stop', () => { const s = focus.stop(false); armFocus(); if (s && s.minutes >= 5) grantXp('focusMin', s.minutes, s.text); send('focus', { active: null, ended: s, stopped: true, week: focusWeek() }); return s; });
 
 // ---------- daily brief ----------
 ipcMain.handle('brief:build', async (_e, alerts) => (demoMode ? demo.brief(config, todos.load())
@@ -453,11 +559,13 @@ ipcMain.handle('settings:set', (_e, patch) => {
     const rule = SETTING_KEYS[k];
     if (!rule) continue;
     if (rule === 'bool') settings[k] = !!v;
-    else if (rule === 'string') settings[k] = String(v).slice(0, 40);
+    else if (rule === 'string') settings[k] = String(v).trim().slice(0, 60);
     else if (rule.includes(v)) settings[k] = v;
   }
   saveSettings();
   if ('theme' in (patch || {})) pushTheme();
+  if ('weatherPlace' in (patch || {}) || 'weatherOn' in (patch || {})) setTimeout(() => refreshWeather(true), 300);
+  if ('gpu' in (patch || {}) && !!settings.gpu !== useGpu) setTimeout(relaunchForGpu, 500);
   if ('sing' in (patch || {})) { send('sing', settings.sing); if (settings.sing) { meterRestarts = 0; startMeter(); } else stopMeter(); }
   return settings;
 });
@@ -479,7 +587,7 @@ ipcMain.handle('config:save', (_e, next) => {
   const tmp = `${CONFIG_FILE}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(next, null, 2));
   fs.renameSync(tmp, CONFIG_FILE);
-  config = next; send('config', config); refreshGit(); refreshAgents(); setTimeout(refreshServers, 500);
+  config = next; send('config', config); refreshGit(); refreshAgents(); startWidgets(); setTimeout(refreshServers, 500);
   return { ok: true };
 });
 ipcMain.handle('config:test-server', async (_e, server) => {
@@ -541,9 +649,10 @@ app.whenReady().then(() => {
 
   // To-dos edited by Claude sessions (todo.js) or by hand show up within a second.
   fs.mkdirSync(path.dirname(todos.FILE), { recursive: true });
-  fs.watchFile(todos.FILE, { interval: 800 }, () => send('todos', todos.load()));
+  xpFromTodos(todos.load());
+  fs.watchFile(todos.FILE, { interval: 800 }, () => { const list = todos.load(); xpFromTodos(list); send('todos', list); });
   fs.watchFile(CONFIG_FILE, { interval: 2000 }, () => {
-    try { config = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')); send('config', config); refreshGit(); } catch {}
+    try { config = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')); send('config', config); refreshGit(); startWidgets(); } catch {}
   });
 
   screen.on('display-metrics-changed', fitToScreen);
@@ -615,6 +724,10 @@ app.whenReady().then(() => {
   setInterval(refreshServers, (config.refreshMinutes || 2) * 60000);
   // Local, cheap: Claude transcripts (file reads only) and this PC's vitals.
   refreshAgents(); setInterval(refreshAgents, 12000);
+  startWidgets();
+  setTimeout(() => refreshWeather(false), 6000); setInterval(() => refreshWeather(false), 20 * 60000);
+  // Quick add from any app. Only the desktop instance takes the hotkey (tests and dev windows don't).
+  if (!windowed) globalShortcut.register('CommandOrControl+Alt+N', openQuickAdd);
   sampleVitals(); setInterval(sampleVitals, 5000);
   armFocus();
   setInterval(refreshGit, (config.gitRefreshMinutes || 10) * 60000);

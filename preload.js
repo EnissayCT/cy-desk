@@ -41,7 +41,15 @@ contextBridge.exposeInMainWorld('cy', {
   companionPick: () => ipcRenderer.invoke('companion:pick'),
   companionSet: (c) => ipcRenderer.invoke('companion:set', c),
   companionData: (file) => ipcRenderer.invoke('companion:data', file),
+  chat: (q) => ipcRenderer.invoke('cy:chat', q),
+  setKey: (key) => ipcRenderer.invoke('cy:key:set', key),
+  clearKey: () => ipcRenderer.invoke('cy:key:clear'),
+  weather: () => ipcRenderer.invoke('cy:weather'),
+  xp: () => ipcRenderer.invoke('xp:get'),
+  equip: (id, on) => ipcRenderer.invoke('xp:equip', id, on),
+  quickOpen: () => ipcRenderer.invoke('quick:open'),
+  quickClose: () => ipcRenderer.invoke('quick:close'),
   on: (channel, fn) => {
-    if (['status', 'todos', 'config', 'theme', 'cursor', 'covered', 'audio', 'sing', 'agents', 'vitals', 'focus', 'commits', 'companion'].includes(channel)) ipcRenderer.on(channel, (_e, payload) => fn(payload));
+    if (['status', 'todos', 'config', 'theme', 'cursor', 'covered', 'audio', 'sing', 'agents', 'vitals', 'focus', 'commits', 'companion', 'xp', 'weather', 'widgets'].includes(channel)) ipcRenderer.on(channel, (_e, payload) => fn(payload));
   }
 });
